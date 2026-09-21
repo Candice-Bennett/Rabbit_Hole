@@ -1,0 +1,4 @@
+hanlp
+requests
+tqdm
+ebooklib

@@ -1,0 +1,8 @@
+*.pyc
+.venv/
+venv/
+data/*
+!data/.gitkeep
+output/*
+!output/.gitkeep
+.vscode/
