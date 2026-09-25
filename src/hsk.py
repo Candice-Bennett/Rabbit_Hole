@@ -38,5 +38,6 @@ def load_hsk(base_dir: str = "hsk_data") -> dict[str, HskList]:
     base = Path(base_dir)
     return {
         "2.0": _load(base / "HSK2.0", "HSK2.0", "HSK 2.0", HSK2_LEVELS),
+        "3.0": _load(base / "HSK3.0", "HSK3.0", "HSK 3.0", HSK3_LEVELS),
         "3.1": _load(base / "HSK3.1", "HSK3.1", "HSK 3.1", HSK3_LEVELS),
     }

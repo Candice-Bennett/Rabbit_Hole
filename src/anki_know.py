@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 from pathlib import Path
 
 import requests
@@ -10,6 +9,7 @@ from ankiconnect_client import AnkiConnectClient
 from config import AnkiField
 from console import warn
 from models import WordCandidate
+from word_analysis import HAS_HANZI
 
 STRIP_HTML = re.compile(r"<[^>]+>")
 
@@ -24,12 +24,6 @@ LABELS = {
 
 def strip_html(text: str) -> str:
     return STRIP_HTML.sub("", text).strip()
-
-
-@dataclass
-class AnkiStats:
-    unique: dict[str, int]
-    tokens: dict[str, int]
 
 
 class AnkiKnowledge:
@@ -109,33 +103,14 @@ class AnkiKnowledge:
             return "learning"
         return "present"
 
-    def classify(self, candidates: list[WordCandidate]) -> AnkiStats:
-        unique = {b: 0 for b in BUCKETS}
-        tokens = {b: 0 for b in BUCKETS}
-        for c in candidates:
-            b = self.bucket(c.text)
-            unique[b] += 1
-            tokens[b] += c.count
-        return AnkiStats(unique, tokens)
-
     def missing(self, candidates: list[WordCandidate]) -> list[WordCandidate]:
         return [c for c in candidates if self.bucket(c.text) == "missing"]
 
+    def known_words(self) -> set[str]:
+        return {w for w in self.word_cards if self.bucket(w) == "know_well"}
 
-def percent(part: int, total: int) -> float:
-    return part / total * 100 if total else 0.0
-
-
-def print_anki(stats: AnkiStats) -> None:
-    total_u = sum(stats.unique.values())
-    total_t = sum(stats.tokens.values())
-    print("\n--- Anki knowledge ---")
-    print(f"{'':<22}{'unique words':>13}{'%':>7}{'total count':>13}{'%':>7}")
-    for b in BUCKETS:
-        print(
-            f"{LABELS[b]:<22}{stats.unique[b]:>13}{percent(stats.unique[b], total_u):>6.1f}%"
-            f"{stats.tokens[b]:>13}{percent(stats.tokens[b], total_t):>6.1f}%"
-        )
+    def known_characters(self) -> set[str]:
+        return {c for w in self.known_words() for c in w if HAS_HANZI.match(c)}
 
 
 SIGNATURE = "# rabbit-hole export"

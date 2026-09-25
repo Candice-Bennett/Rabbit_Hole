@@ -17,6 +17,7 @@ class AnkiField:
 class Config:
 
     # Anki
+    anki_analysis: bool = False
     mature_interval_days: int = 21
     anki_fields: list[AnkiField] = field(default_factory=list)
 
@@ -28,6 +29,22 @@ class Config:
     # Example sentnce
     example_sentence_min_hanzi: int = 6
     example_sentence_max_hanzi: int = 20
+
+    # Data settings
+    exclude_names: bool = False
+    seen_times_to_count_as_learned: int = 10
+    coverage_targets: list = field(default_factory=lambda: [95, 98])
+
+    # Plot properties
+    use_chapters: bool = True
+    chart_bucket_words: int = 5000
+    occurrence_bands: list[int] = field(default_factory=lambda: [1, 5, 10, 15, 20])
+    occurrence_overflow_band: bool = True
+    chengyu_analysis: bool = False
+    chart_width_px: int = 1650
+    chart_height_px: int = 1050
+    chart_x_limits: list = field(default_factory=lambda: [None, None])
+    chart_y_limits: dict = field(default_factory=dict)
 
     # Debug
     segment_batch_size: int = 32

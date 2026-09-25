@@ -1,7 +1,7 @@
 # Rabbit-Hole
 
 Takes a Chinese `.txt` or `.epub`, segments it with HanLP, and tells you how
-hard it is against the HSK 2.0 and HSK 3.1 word lists. It can also check
+hard it is against the HSK 2.0, HSK 3.0 and HSK 3.1 word lists. It can also check
 AnkiConnect to see how much of the text's vocabulary you already know, and
 export the words you're missing to a plain text file that
 [Carrot Chunker](https://github.com/Candice-Bennett/Carrot_Chunker) can turn
@@ -12,15 +12,12 @@ steps live under [src](src).
 
 - Loads the text (`.txt` or `.epub`) and cleans [Novel-Downloader](https://github.com/404-novel-project/novel-downloader) noise.
 - Segments it with HanLP, counting how many times each word appears.
-- Compares every unique word against HSK 2.0 and HSK 3.1, showing a
-  breakdown by level for both unique words and whole text, with cumulative
-  coverage per level, so you can see e.g. "HSK 4 covers 92% of this text".
-- If AnkiConnect is configured, looks up each word against your Anki
-  collection and buckets it into:
-  - **Know well** - a mature card exists (interval >= `mature_interval_days`)
-  - **Already learning** - a card exists and has been reviewed at least once
-  - **Present, not learned** - a card exists but has never been reviewed
-  - **Missing** - no matching card at all
+- Compares every word against HSK 2.0, HSK 3.0 and HSK 3.1 and charts the breakdown by
+  level.
+- Gives you an almost overwhelming amount of data about your text giving an analysis of words
+  and hanzi both culumative and unique over the text of the book.
+- If `anki_analysis` is on and AnkiConnect is configured, looks up each word against your Anki
+  collection and charts the same breakdowns informed by your anki stats
 - Offers to export the missing words to a text file, one line per word as
   `word<TAB>count<TAB>example sentence`, where `count` is how many times the
   word occurs in the text and the example is the first sentence the word
@@ -33,9 +30,35 @@ This tool does not create Anki cards itself, it only measures difficulty and
 tells you what you're missing. Feed the exported word list into
 [Carrot Chunker](https://github.com/Candice-Bennett/Carrot_Chunker) to build the cards.
 
-![HSK 2.0 breakdown](readme_images/HSK2.0Analysis.png)
-![HSK 3.1 breakdown](readme_images/HSK3.1Analysis.png)
-![Anki knowledge breakdown](readme_images/AnkiAnalysis.png)
+## Example charts
+
+These are just five of the charts Rabbit-Hole makes, A normal run writes many more to `output/`, 
+covering new words and hanzi per chapter, cumulative reading, sentence and paragraph length,
+HSK lists, and optional Anki and chengyu versions.
+
+![HSK 3.1 breakdown](readme_images/hsk3.1_levels.png)
+
+**Unique new words** - how many new words each chapter throws at you, and the
+running total of unique words seen.
+
+![Unique new words](readme_images/unique_new_words.png)
+
+**Occurrences** - every word and hanzi in each chapter, coloured by which time
+you're seeing it, so you can see how quickly new vocabulary turns into repeats.
+
+![Occurrences](readme_images/occurrences.png)
+
+**Known coverage (Anki)** - the share of each chapter you'd know, counting a
+word or hanzi as known if you know it well in Anki or have already seen it 10
+times earlier in the text, against 95% and 98% reading thresholds.
+
+![Known coverage with Anki](readme_images/anki_coverage.png)
+
+**Anki knowledge** - every word split by its status in your Anki collection:
+each status's share of every chapter, then cumulative words read and cumulative
+unique words seen.
+
+![Anki knowledge](readme_images/anki_knowledge.png)
 
 ## Prerequisites
 
@@ -84,10 +107,22 @@ NOTE: first run downloads the HanLP model (network required, cached after in
 | `segment_batch_size` | sentences per HanLP call |
 | `example_sentence_min_hanzi` | shortest sentence (in hanzi) usable as an example (default `6`) |
 | `example_sentence_max_hanzi` | longest sentence (in hanzi) usable as an example (default `20`) |
+| `exclude_names` | leave people's names and place names out of every count, chart and export, using HanLP's name tagger (downloads a second model on first run). |
+| `seen_times_to_count_as_learned` | for the known coverage charts, once a word or hanzi has been seen this many times in the text, later appearances count as known `0` turns this off |
+| `coverage_targets` | dashed reference lines on the known coverage charts, in percent |
+| `use_chapters` | uses chapters for charts |
+| `chart_bucket_words` | words per bar in the charts when `use_chapters` is `false` |
+| `occurrence_bands` | colour bands for the occurrences charts, i.e. `[1, 5, 10, 15, 20]` colours the 1st time a word is seen, the 2nd-5th, 6th-10th, 11th-15th and 16th-20th differently. Occurrences past the last number go in a final band, i.e. 21st+  |
+| `occurrence_overflow_band` | show the final band (i.e. 21st+) on the words and hanzi per chapter occurrences charts. |
+| `chengyu_analysis` | Makes graphs of all the chengyu (i.e. words with 4+ hanzi) |
+| `chart_width_px` / `chart_height_px` | size of every chart image in pixels |
+| `chart_x_limits` | `[min, max]` x range for every chart, in chapters (or words read when `use_chapters` is `false`), e.g. `[1, 50]` to show chapters 1-50. `null` shows all  |
+| `chart_y_limits` | `[min, max]` y range per chart and panel, keyed by the chart's file name `null` shows all  |
 | `ankiconnect_url` | default `http://127.0.0.1:8765` |
-| `ankiconnect_timeout` | seconds to wait for AnkiConnect to respond before giving up (default `30`) |
-| `mature_interval_days` | interval (in days) a card needs to count as "know well" (default `21`, matching Anki's own mature threshold) |
+| `ankiconnect_timeout` | seconds to wait for AnkiConnect to respond before giving up |
+| `mature_interval_days` | interval (in days) a card needs to count as "know well"  |
 | `missing_words_output` | where the missing-words export goes - `""` uses `output/missing_words.txt` |
+| `anki_analysis` | run the Anki knowledge check, its charts and the missing-words export. |
 | `anki_fields` | `{note_type, field_name}` pairs telling it which Anki fields hold the Hanzi word, checked via AnkiConnect. Leave empty (`[]`) to skip the Anki check entirely. |
 
 ## Troubleshooting
@@ -98,7 +133,7 @@ NOTE: first run downloads the HanLP model (network required, cached after in
     handful of retries then you can work around it by fetching the file yourself:
     1. Copy the URL from the `Downloading ...` line above the error.
     2. Download it in your browser and unzip it.
-    3. Drop the resulting folder into the matching path under `~/.hanlp/`
+    3. Drop the resulting folder into the matching path under `~/.hanlp/` (on Windows this is usually `%APPDATA%\hanlp\`)
        (e.g. `~/.hanlp/tok/coarse_electra_small_20220616_012050/`),
        overwriting anything already there.
     4. Re-run it - it'll see the model's already in place and skip

@@ -7,6 +7,7 @@ from pathlib import Path
 EPUB_HOUSEKEEPING_FILES = {"nav.xhtml", "toc.xhtml", "message.xhtml", "info.xhtml", "index.xhtml"}
 DOWNLOADER_SIGNATURE = re.compile(r"novel-downloader|小说下载器")
 HR_TAG = re.compile(r"<hr\s*/?>", re.IGNORECASE)
+CHAPTER_BREAK = ""
 
 
 class HTMLTextExtractor(HTMLParser):
@@ -66,4 +67,4 @@ def load_epub(path: Path) -> str:
         if downloader_signature:
             html = strip_epub(html)
         parts.append(html_to_text(html))
-    return "\n\n".join(parts)
+    return f"\n\n{CHAPTER_BREAK}\n\n".join(parts)

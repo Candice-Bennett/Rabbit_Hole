@@ -1,4 +1,5 @@
 {
+  "anki_analysis": true,
   "mature_interval_days": 21,
   "anki_fields": [
     { "note_type": "Basic - New HSK (2025) - meaning", "field_name": "Simplified" },
@@ -11,6 +12,39 @@
 
   "example_sentence_min_hanzi": 6,
   "example_sentence_max_hanzi": 20,
+
+  "exclude_names": true,
+  "seen_times_to_count_as_learned": 25,
+  "coverage_targets": [95, 98],
+
+  "use_chapters": true,
+  "chart_bucket_words": 1000,
+  "occurrence_bands": [1, 5, 10, 15, 20, 25],
+  "occurrence_overflow_band": true,
+  "chengyu_analysis": false,
+  "chart_width_px": 1650,
+  "chart_height_px": 1050,
+  "chart_x_limits": [null, null],
+  "chart_y_limits": {
+    "unique_new_characters": { "new": [null, null], "total": [null, null] },
+    "unique_new_words": { "new": [null, null], "total": [null, null] },
+    "occurrences": { "words": [null, null], "hanzi": [null, null] },
+    "occurrences_ratio": { "words": [null, null], "hanzi": [null, null] },
+    "cumulative_unique_seen": { "words": [null, null], "hanzi": [null, null] },
+    "cumulative_read": { "words": [null, null], "hanzi": [null, null] },
+    "coverage": { "words": [null, null], "hanzi": [null, null] },
+    "text_lengths": { "sentence": [null, null], "paragraph": [null, null] },
+    "hsk2.0_levels": { "share": [null, null], "read": [null, null], "unique": [null, null] },
+    "hsk3.0_levels": { "share": [null, null], "read": [null, null], "unique": [null, null] },
+    "hsk3.1_levels": { "share": [null, null], "read": [null, null], "unique": [null, null] },
+    "anki_knowledge": { "share": [null, null], "read": [null, null], "unique": [null, null] },
+    "unique_new_chengyu": { "new": [null, null], "total": [null, null] },
+    "chengyu_occurrences": { "chengyu": [null, null] },
+    "chengyu_occurrences_ratio": { "chengyu": [null, null] },
+    "chengyu_cumulative_unique_seen": { "chengyu": [null, null] },
+    "chengyu_cumulative_read": { "chengyu": [null, null] },
+    "chengyu_coverage": { "chengyu": [null, null] }
+  },
 
   "segment_batch_size": 64,
   "clean_text": true,
