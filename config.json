@@ -12,7 +12,6 @@
     { "note_type": "Basic - New HSK (2025) - meaning", "field_name": "Simplified" },
     { "note_type": "Tuzi", "field_name": "Hanzi" }
   ],
-
   
   "input_path": "",
   "hsk_data_dir": "hsk_data",
