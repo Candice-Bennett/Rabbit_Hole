@@ -22,7 +22,13 @@ RAINBOW = ["#e34948", "#eb6834", "#eda100", "#008300", "#1baf7a", "#2a78d6", "#4
 TEXT_SECONDARY = "#52514e"
 GRID = "#e8e7e3"
 OVERFLOW = "#d9d8d3"
-ANKI_COLOURS = {"know_well": "#008300", "learning": "#2a78d6", "present": "#eda100", "missing": "#e34948"}
+ANKI_COLOURS = {
+    "know_well": "#008300",
+    "read": "#1baf7a",
+    "learning": "#2a78d6",
+    "present": "#eda100",
+    "missing": "#e34948",
+}
 DPI = 150
 LEGEND_PX = 70
 
@@ -34,6 +40,9 @@ class ChartSettings:
     x_limits: list = field(default_factory=lambda: [None, None])
     y_limits: dict = field(default_factory=dict)
     coverage_targets: list = field(default_factory=lambda: [95, 98])
+    known_label: str = "known in Anki"
+    known_source: str = "Anki"
+    known_prefix: str = "anki_"
 
     def y_limits_for(self, chart: str, panel: str) -> tuple:
         limits = list(self.y_limits.get(chart, {}).get(panel) or [])
@@ -117,8 +126,8 @@ def finish(
     plt.close(fig)
 
 
-def anki_title(title: str, excluding_known: bool) -> str:
-    return f"Anki: {title} (excluding known)" if excluding_known else title
+def anki_title(title: str, excluding_known: bool, settings: ChartSettings) -> str:
+    return f"{settings.known_source}: {title} (excluding known)" if excluding_known else title
 
 
 def unit_label(groups: Groups) -> str:
@@ -229,8 +238,8 @@ def plot_new_over_time(
         fontweight="bold",
     )
 
-    style_axes(top, anki_title(f"Unique new {noun} per {unit}", excluding_known))
-    style_axes(bottom, anki_title(f"Cumulative unique {noun} seen", excluding_known))
+    style_axes(top, anki_title(f"Unique new {noun} per {unit}", excluding_known, settings))
+    style_axes(bottom, anki_title(f"Cumulative unique {noun} seen", excluding_known, settings))
     for ax in (top, bottom):
         ax.yaxis.set_major_formatter(count_formatter())
 
@@ -260,7 +269,7 @@ def plot_occurrences(
     for ax, (noun, data) in zip(axes, panels):
         draw_stacked(ax, groups, data.band_values(as_ratio, overflow), colours)
         measure = f"{noun.capitalize()} ÷ total {noun}" if as_ratio else noun.capitalize()
-        style_axes(ax, anki_title(f"{measure} per {unit}, by which time they're seen", excluding_known))
+        style_axes(ax, anki_title(f"{measure} per {unit}, by which time they're seen", excluding_known, settings))
         ax.yaxis.set_major_formatter(PercentFormatter(1.0) if as_ratio else count_formatter())
 
     stacked_legend(fig, colours, labels, "Time seen")
@@ -283,7 +292,7 @@ def plot_band_stacks(
 
     for ax, (noun, band_values) in zip(axes, panels):
         draw_stacked(ax, groups, band_values[::-1], colours[::-1])
-        style_axes(ax, anki_title(title.format(noun=noun, unit=unit_label(groups)), excluding_known))
+        style_axes(ax, anki_title(title.format(noun=noun, unit=unit_label(groups)), excluding_known, settings))
         ax.yaxis.set_major_formatter(count_formatter())
 
     stacked_legend(fig, colours, labels, legend_title)
@@ -312,10 +321,10 @@ def plot_read_so_far(panels: list[tuple[str, Occurrences]], *args, excluding_kno
     )
 
 
-def coverage_title(noun: str, unit: str, learned_after: int, with_anki: bool, overall: float) -> str:
-    rules = (["known in Anki"] if with_anki else []) + ([f"seen {learned_after}+ times in the text so far"] if learned_after else [])
+def coverage_title(noun: str, unit: str, learned_after: int, with_anki: bool, overall: float, settings: ChartSettings) -> str:
+    rules = ([settings.known_label] if with_anki else []) + ([f"seen {learned_after}+ times in the text so far"] if learned_after else [])
     title = f"{noun.capitalize()} known per {unit} ({' or '.join(rules)}), whole text {overall:.1%}"
-    return f"Anki: {title}" if with_anki else title
+    return f"{settings.known_source}: {title}" if with_anki else title
 
 
 def plot_coverage(
@@ -338,7 +347,7 @@ def plot_coverage(
 
     for ax, (noun, data) in zip(axes, panels):
         ax.plot(xs, data.shares, color=SERIES, linewidth=2, marker="o", markersize=4)
-        style_axes(ax, coverage_title(noun, unit, learned_after, with_anki, data.overall))
+        style_axes(ax, coverage_title(noun, unit, learned_after, with_anki, data.overall, settings))
         valid = [s for s in data.shares if not math.isnan(s)]
         lowest = min(valid + [t / 100 for t in settings.coverage_targets], default=0)
         ax.set_ylim(max(0.0, math.floor((lowest - 0.02) * 20) / 20), 1.0)

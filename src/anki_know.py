@@ -6,16 +6,17 @@ from pathlib import Path
 import requests
 
 from ankiconnect_client import AnkiConnectClient
-from config import AnkiField
+from config import AnkiField, Config
 from console import warn
+from hanzi import HAS_HANZI
 from models import WordCandidate
-from word_analysis import HAS_HANZI
 
 STRIP_HTML = re.compile(r"<[^>]+>")
 
-BUCKETS = ("know_well", "learning", "present", "missing")
+BUCKETS = ("know_well", "read", "learning", "present", "missing")
 LABELS = {
     "know_well": "Know well",
+    "read": "Known from books you've read",
     "learning": "Already learning",
     "present": "Present, not learned",
     "missing": "Missing",
@@ -111,6 +112,17 @@ class AnkiKnowledge:
 
     def known_characters(self) -> set[str]:
         return {c for w in self.known_words() for c in w if HAS_HANZI.match(c)}
+
+
+def load_anki(cfg: Config) -> AnkiKnowledge | None:
+    if not cfg.anki_analysis:
+        return None
+    if not cfg.anki_fields:
+        warn("Anki: anki_analysis is on but anki_fields is empty, skipping the Anki check")
+        return None
+    client = AnkiConnectClient(cfg.ankiconnect_url)
+    knowledge = AnkiKnowledge(client, cfg.anki_fields, cfg.mature_interval_days, cfg.ankiconnect_timeout)
+    return knowledge if knowledge.available else None
 
 
 SIGNATURE = "# rabbit-hole export"

@@ -2,15 +2,29 @@ from __future__ import annotations
 
 import re
 
+from ingest import CHAPTER_BREAK, FILE_BREAK
+
 DIVIDER = re.compile(r"^[ \t]*[….]{4,}[ \t]*$", re.MULTILINE)
+NUMBER = r"[0-9０-９〇零一二三四五六七八九十百千万两]+"
+HEADING = re.compile(
+    rf"""^[ \t　]*(?:\#+[ \t]*)?                      # optional markdown '#'
+    (?:第[ \t　]*{NUMBER}[ \t　]*[章节回卷部篇集幕话]  # 第一章 / 第 1 章 / 第3节 / 第二卷
+     |{NUMBER}[ \t　]*[章回]                          # 1章
+     |(?:序章|楔子|引子|尾声|终章)[ \t　]*$)            # unnumbered openers / closers
+    (?:[ \t　：:、.·\-]+[^\n。，；]{{0,30}})?[ \t　]*$  # optional short title, no prose punctuation
+    """,
+    re.MULTILINE | re.VERBOSE,
+)
+CHAPTER_EDGE = re.compile(rf"{DIVIDER.pattern}|{HEADING.pattern}|[{CHAPTER_BREAK}{FILE_BREAK}]", re.MULTILINE | re.VERBOSE)
 CREDIT_LINE = re.compile(r"^.*本文件由.*$", re.MULTILINE)
 HEADER_LABEL = re.compile(r"^\**(作者|Tag列表|原始网址|封面图片地址|简介|主角|一句话简介|下载时间)\**[：:]")
-AUTHOR_NOTE = re.compile(r"作者有话说[：:]?")
+AUTHOR_NOTE = re.compile(r"^[ \t　]*作者有话要?说[：:]?", re.MULTILINE)
 
 
-def clean_text(text: str) -> str:
+def clean_text(text: str, author_notes: bool = True) -> str:
     text = strip_header(text)
-    text = strip_author_notes(text)
+    if author_notes:
+        text = strip_author_notes(text)
     return text
 
 
@@ -38,13 +52,13 @@ def skip_blank_lines(text: str) -> str:
 
 
 def strip_author_notes(text: str) -> str:
-    while True:
-        match = AUTHOR_NOTE.search(text)
-        if not match:
-            return text
-        rest = text[match.end():]
-        next_divider = DIVIDER.search(rest)
-        if next_divider:
-            text = text[: match.start()] + rest[next_divider.start():]
-        else:
-            text = text[: match.start()]
+    kept = []
+    pos = 0
+    for note in AUTHOR_NOTE.finditer(text):
+        if note.start() < pos:
+            continue
+        kept.append(text[pos : note.start()])
+        edge = CHAPTER_EDGE.search(text, note.end())
+        pos = edge.start() if edge else len(text)
+    kept.append(text[pos:])
+    return "".join(kept)

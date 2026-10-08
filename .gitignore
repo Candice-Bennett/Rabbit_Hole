@@ -3,6 +3,10 @@
 venv/
 data/*
 !data/.gitkeep
+!data/books_read/
+data/books_read/*
+!data/books_read/.gitkeep
 output/*
 !output/.gitkeep
 .vscode/
+__pycache__/

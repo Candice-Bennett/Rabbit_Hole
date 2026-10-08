@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import io
 import sys
+from collections.abc import Callable
+from concurrent.futures import Future, ProcessPoolExecutor
+from contextlib import redirect_stdout
 from dataclasses import dataclass
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
-from anki_know import BUCKETS, LABELS, AnkiKnowledge, export_missing
-from ankiconnect_client import AnkiConnectClient
+from anki_know import BUCKETS, LABELS, AnkiKnowledge, export_missing, load_anki
 from chart import (
     ANKI_COLOURS,
     ChartSettings,
@@ -24,9 +27,12 @@ from config import Config
 from console import fatal, warn
 from hsk import HskList, load_hsk
 from ingest import load_text
+from meta_analysis import run_meta_analysis
 from models import WordCandidate
+from read_books import READ_OUTPUT, ReadKnowledge, needs_summary, read_book_files, read_books_knowledge
 from new_over_time import (
     Groups,
+    TextLengths,
     category_breakdown,
     characters_in,
     chengyu_in,
@@ -40,6 +46,7 @@ from new_over_time import (
     word_itself,
 )
 from sectioning import split_chapters
+from summary import build_summary, save_summary
 from text_cleaning import clean_text
 from word_analysis import WordAnalysisService
 
@@ -57,7 +64,7 @@ class Run:
     learned_after: int
 
     def path(self, name: str, note: str = "") -> Path:
-        path = Path("output") / f"{self.stem}_{name}.png"
+        path = Path("output") / self.stem / f"{name}.png"
         print(f"Wrote {str(path)!r}{note}")
         return path
 
@@ -71,14 +78,14 @@ class ChartSet:
 
 def chart_new(run: Run, noun: str, known: set[str] | None = None) -> None:
     data = new_over_time(run.groups, UNITS[noun], known)
-    anki = "" if known is None else "anki_"
-    note = "" if known is None else f" ({len(known)} {noun} known in Anki)"
+    anki = "" if known is None else run.settings.known_prefix
+    note = "" if known is None else f" ({len(known)} {noun} {run.settings.known_label})"
     path = run.path(f"{anki}unique_new_{noun}", note)
     plot_new_over_time(data, noun, path, run.groups, run.settings, excluding_known=known is not None)
 
 
 def chart_suite(run: Run, nouns: list[str], prefix: str, known: dict[str, set[str]] | None = None) -> None:
-    anki = "anki_" if known else ""
+    anki = run.settings.known_prefix if known else ""
     known = known or {}
     excluding_known = bool(known)
 
@@ -118,52 +125,147 @@ def chart_hsk(run: Run, key: str, hsk_list: HskList) -> None:
     plot_breakdown(data, f"{hsk_list.name} level", colours, chart, run.path(chart), run.groups, run.settings)
 
 
-def chart_anki_knowledge(run: Run, knowledge: AnkiKnowledge) -> None:
-    categories = [LABELS[b] for b in BUCKETS]
-    colours = [ANKI_COLOURS[b] for b in BUCKETS]
-    data = category_breakdown(run.groups, categories, lambda w: LABELS[knowledge.bucket(w)])
+def chart_anki_knowledge(run: Run, buckets: dict[str, str]) -> None:
+    used = [b for b in BUCKETS if b != "read" or "read" in buckets.values()]
+    categories = [LABELS[b] for b in used]
+    colours = [ANKI_COLOURS[b] for b in used]
+    data = category_breakdown(run.groups, categories, lambda w: LABELS[buckets[w]])
     path = run.path("anki_knowledge")
     plot_breakdown(data, "Anki status", colours, "anki_knowledge", path, run.groups, run.settings)
+
+
+@dataclass
+class AnkiCharts:
+    known: dict[str, set[str]]
+    buckets: dict[str, str] | None
+
+
+def draw_charts(run: Run, sets: list[ChartSet], hsk: dict[str, HskList], lengths: TextLengths, anki: AnkiCharts | None) -> str:
+    out = io.StringIO()
+    with redirect_stdout(out):
+        print()
+        chart_sets(run, sets)
+        for key, hsk_list in hsk.items():
+            chart_hsk(run, key, hsk_list)
+        plot_text_lengths(lengths, run.path("text_lengths"), run.groups, run.settings)
+        if anki is not None:
+            print()
+            if anki.buckets is not None:
+                chart_anki_knowledge(run, anki.buckets)
+            chart_sets(run, sets, anki.known)
+    return out.getvalue()
+
+
+class ChartQueue:
+    def __init__(self, background: bool, batch: bool):
+        self.pool = ProcessPoolExecutor(1) if background else None
+        self.batch = batch
+        self.pending: tuple[str, Future] | None = None
+        self.failed: list[str] = []
+
+    def draw(self, name: str, *args) -> None:
+        self.wait()
+        if self.pool is None:
+            self.report(name, lambda: draw_charts(*args))
+        else:
+            self.pending = (name, self.pool.submit(draw_charts, *args))
+
+    def wait(self) -> None:
+        if self.pending is None:
+            return
+        name, future = self.pending
+        self.pending = None
+        print(f"\nCharts for {name}:", end="")
+        self.report(name, future.result)
+
+    def report(self, name: str, output: Callable[[], str]) -> None:
+        try:
+            print(output(), end="")
+        except Exception as e:
+            if not self.batch:
+                raise
+            warn(f"Charts failed for {name!r}: {e!r}, moving on")
+            self.failed.append(name)
+
+    def close(self) -> None:
+        self.wait()
+        if self.pool is not None:
+            self.pool.shutdown()
 
 
 def has_chengyu(candidates: list[WordCandidate]) -> bool:
     return any(is_chengyu(c.text) for c in candidates)
 
 
-def main(input_name: str | None = None) -> None:
-    cfg = Config.load("config.json")
-    input_path = cfg.input_path or (Path("data") / input_name if input_name else None)
-    if not input_path:
-        fatal("Usage: python main.py <filename in data/> (or set input_path in config.json)")
+def known_labels(knowledge: AnkiKnowledge | None, read: ReadKnowledge) -> tuple[str, str, str]:
+    # Chart wording and file prefix for the known-word charts: label, title source, file prefix
+    if knowledge is None:
+        return "known from books you've read", "Books you've read", "read_"
+    if read.known:
+        return "known in Anki or from books you've read", "Anki", "anki_"
+    return "known in Anki", "Anki", "anki_"
 
-    try:
-        text = load_text(str(input_path))
-    except FileNotFoundError:
-        fatal(f"Couldn't find input file {str(input_path)!r}, check the filename (or input_path in config.json)")
 
+def book_text(input_path: Path, cfg: Config) -> str:
+    text = load_text(str(input_path))
     if cfg.clean_text:
         before = len(text)
-        text = clean_text(text)
+        text = clean_text(text, cfg.clear_author_notes)
         print(f"Cleaned text: {before} chars, now {len(text)} chars")
+    return text
 
-    hsk = load_hsk(cfg.hsk_data_dir)
-    force_words = set().union(*(hsk_list.all_words() for hsk_list in hsk.values()))
 
-    service = WordAnalysisService(
-        force_words,
-        cfg.segment_batch_size,
-        cfg.example_sentence_min_hanzi,
-        cfg.example_sentence_max_hanzi,
+def summarise_read_book(input_path: Path, cfg: Config, service: WordAnalysisService) -> None:
+    # Books you've read only need a summary for what they've taught you, no charts or export
+    analysis = service.analyse(split_chapters(book_text(input_path, cfg)))
+    groups = group_words(analysis.words_by_chapter, cfg.use_chapters, cfg.chart_bucket_words)
+    lengths = text_lengths(analysis.sentences, groups)
+    summary = build_summary(
+        input_path.stem,
+        input_path.name,
+        analysis.words_by_chapter,
+        lengths.overall_sentence,
+        lengths.overall_paragraph,
+        cfg.opening_words,
         cfg.exclude_names,
     )
-    analysis = service.analyse(split_chapters(text))
+    print(f"Wrote {str(save_summary(summary, READ_OUTPUT / input_path.stem))!r}")
+
+
+def read_books_to_summarise(cfg: Config) -> list[Path]:
+    if not cfg.use_read_books:
+        return []
+    paths: dict[str, Path] = {}
+    for path in read_book_files(data_suffixes(cfg)):
+        paths.setdefault(path.stem, path)
+    return [p for p in paths.values() if needs_summary(p, cfg.exclude_names)]
+
+
+def analyse_book(
+    input_path: Path,
+    cfg: Config,
+    hsk: dict[str, HskList],
+    service: WordAnalysisService,
+    knowledge: AnkiKnowledge | None,
+    read: ReadKnowledge,
+    charts: ChartQueue,
+    batch: bool,
+) -> None:
+    analysis = service.analyse(split_chapters(book_text(input_path, cfg)))
     candidates = analysis.candidates
     print(f"Found {len(candidates)} unique words, {sum(c.count for c in candidates)} words total")
 
     run = Run(
         group_words(analysis.words_by_chapter, cfg.use_chapters, cfg.chart_bucket_words),
         Path(input_path).stem,
-        ChartSettings(cfg.chart_width_px, cfg.chart_height_px, cfg.chart_x_limits, cfg.chart_y_limits, cfg.coverage_targets),
+        ChartSettings(
+            cfg.chart_width_px,
+            cfg.chart_height_px,
+            cfg.chart_x_limits,
+            cfg.chart_y_limits,
+            cfg.coverage_targets,
+            *known_labels(knowledge, read),
+        ),
         sorted({b for b in cfg.occurrence_bands if b > 0}) or [1],
         cfg.occurrence_overflow_band,
         max(cfg.seen_times_to_count_as_learned, 0),
@@ -172,43 +274,130 @@ def main(input_name: str | None = None) -> None:
     if cfg.chengyu_analysis and has_chengyu(candidates):
         sets.append(ChartSet(["chengyu"], ["chengyu"], "chengyu_"))
 
-    print()
-    chart_sets(run, sets)
-    for key, hsk_list in hsk.items():
-        chart_hsk(run, key, hsk_list)
-    plot_text_lengths(text_lengths(analysis.sentences, run.groups), run.path("text_lengths"), run.groups, run.settings)
+    lengths = text_lengths(analysis.sentences, run.groups)
+    summary = build_summary(
+        run.stem,
+        input_path.name,
+        analysis.words_by_chapter,
+        lengths.overall_sentence,
+        lengths.overall_paragraph,
+        cfg.opening_words,
+        cfg.exclude_names,
+    )
+    print(f"Wrote {str(save_summary(summary, Path('output') / run.stem))!r} (for rank.py)")
 
-    if not cfg.anki_analysis:
-        return
-    if not cfg.anki_fields:
-        warn("Anki: anki_analysis is on but anki_fields is empty, skipping the Anki check")
-        return
-
-    client = AnkiConnectClient(cfg.ankiconnect_url)
-    knowledge = AnkiKnowledge(client, cfg.anki_fields, cfg.mature_interval_days, cfg.ankiconnect_timeout)
-    if not knowledge.available:
+    # Only the plain charts without Anki or books you've read, otherwise one known-word set
+    # on top that counts everything you know from either
+    if knowledge is None and not read.known:
+        charts.draw(input_path.name, run, sets, hsk, lengths, None)
         return
 
-    known_words = knowledge.known_words()
-    known_characters = knowledge.known_characters()
+    known_words = read.known | (knowledge.known_words() if knowledge else set())
+    known_characters = read.characters | (knowledge.known_characters() if knowledge else set())
     known = {
         "characters": known_characters,
         "hanzi": known_characters,
         "words": known_words,
         "chengyu": {w for w in known_words if is_chengyu(w)},
     }
-    print()
-    chart_anki_knowledge(run, knowledge)
-    chart_sets(run, sets, known)
+    if knowledge is None:
+        charts.draw(input_path.name, run, sets, hsk, lengths, AnkiCharts(known, None))
+        return
 
-    missing = knowledge.missing(candidates)
+    buckets = {c.text: knowledge.bucket(c.text) for c in candidates}
+    buckets.update({w: "read" for w, b in buckets.items() if b != "know_well" and w in read.known})
+    charts.draw(input_path.name, run, sets, hsk, lengths, AnkiCharts(known, buckets))
+
+    missing = [c for c in knowledge.missing(candidates) if c.text not in read.known]
     if not missing:
         return
-    answer = input(f"\nExport the {len(missing)} missing words to a file? (y/n): ").strip().lower()
-    if answer == "y":
-        out = cfg.missing_words_output or "output/missing_words.txt"
-        export_missing(missing, out)
-        print(f"Wrote {out!r}, {len(missing)} words")
+    book_out = str(Path("output") / run.stem / "missing_words.txt")
+    if batch:
+        out = book_out
+    else:
+        answer = input(f"\nExport the {len(missing)} missing words to a file? (y/n): ").strip().lower()
+        if answer != "y":
+            return
+        out = cfg.missing_words_output or book_out
+    export_missing(missing, out)
+    print(f"Wrote {out!r}, {len(missing)} words")
+
+
+def data_suffixes(cfg: Config) -> set[str]:
+    if cfg.only_run_epub and not cfg.only_run_txt:
+        return {".epub"}
+    if cfg.only_run_txt and not cfg.only_run_epub:
+        return {".txt"}
+    return {".epub", ".txt"}
+
+
+def find_inputs(cfg: Config, input_name: str | None) -> list[Path]:
+    if input_name:
+        return [Path("data") / input_name]
+    if cfg.input_path:
+        return [Path(cfg.input_path)]
+    if not cfg.run_for_all_files_in_data:
+        fatal("run_for_all_files_in_data is off, so pass a filename: python main.py <filename in data/>")
+    suffixes = data_suffixes(cfg)
+    inputs = sorted(p for p in Path("data").iterdir() if p.is_file() and p.suffix.lower() in suffixes)
+    if not inputs:
+        fatal(f"No {'/'.join(sorted(suffixes))} files found in data/")
+    return inputs
+
+
+def main(input_name: str | None = None) -> None:
+    cfg = Config.load("config.json")
+    inputs = find_inputs(cfg, input_name)
+    batch = len(inputs) > 1
+
+    for path in inputs:
+        if not path.is_file():
+            fatal(f"Couldn't find input file {str(path)!r}, check the filename (or input_path in config.json)")
+
+    hsk = load_hsk(cfg.hsk_data_dir)
+    force_words = set().union(*(hsk_list.all_words() for hsk_list in hsk.values()))
+    service = WordAnalysisService(
+        force_words,
+        cfg.segment_batch_size,
+        cfg.example_sentence_min_hanzi,
+        cfg.example_sentence_max_hanzi,
+        cfg.exclude_names,
+        2 if cfg.parallel_segmenting else 1,
+    )
+    knowledge = load_anki(cfg)
+    charts = ChartQueue(cfg.background_charts, batch)
+
+    failed = []
+    try:
+        read = read_books_to_summarise(cfg)
+        for i, path in enumerate(read, 1):
+            print(f"\n=== Book you've read [{i}/{len(read)}] {path.name} ===")
+            try:
+                summarise_read_book(path, cfg, service)
+            except Exception as e:
+                warn(f"Failed on {path.name!r}: {e!r}, it won't count towards what you know")
+        read_known = read_books_knowledge(cfg)
+        for i, path in enumerate(inputs, 1):
+            print(f"\n=== [{i}/{len(inputs)}] {path.name} ===")
+            try:
+                analyse_book(path, cfg, hsk, service, knowledge, read_known, charts, batch)
+            except Exception as e:
+                if not batch:
+                    raise
+                warn(f"Failed on {path.name!r}: {e!r}, moving on")
+                failed.append(path.name)
+        charts.close()
+    finally:
+        service.close()
+    failed += charts.failed
+
+    if batch:
+        print(f"\nDone: {len(inputs) - len(failed)}/{len(inputs)} books, charts are in output/<book name>/")
+        if failed:
+            warn("Failed: " + ", ".join(failed))
+
+    if cfg.meta_analysis:
+        run_meta_analysis(cfg, hsk, knowledge, read_known)
 
 
 if __name__ == "__main__":

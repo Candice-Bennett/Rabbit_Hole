@@ -1,26 +1,31 @@
 {
-  "anki_analysis": true,
+  "meta_analysis": false,
+  "reading_path_tolerance": 2.0,
+  "reading_path_length_weight": 0.1,
+  "seen_times_to_count_as_learned": 25,
+  "use_read_books": false,
+  "read_books_knowledge": "seen_times",
+  "read_books_percentage_understood": 95,
+  "anki_analysis": false,
   "mature_interval_days": 21,
   "anki_fields": [
     { "note_type": "Basic - New HSK (2025) - meaning", "field_name": "Simplified" },
     { "note_type": "Tuzi", "field_name": "Hanzi" }
   ],
 
+  
   "input_path": "",
   "hsk_data_dir": "hsk_data",
   "missing_words_output": "",
-
-  "example_sentence_min_hanzi": 6,
-  "example_sentence_max_hanzi": 20,
-
-  "exclude_names": true,
-  "seen_times_to_count_as_learned": 25,
-  "coverage_targets": [95, 98],
+  "run_for_all_files_in_data": false,
+  "only_run_epub": false,
+  "only_run_txt": false,
 
   "use_chapters": true,
   "chart_bucket_words": 1000,
   "occurrence_bands": [1, 5, 10, 15, 20, 25],
   "occurrence_overflow_band": true,
+  "coverage_targets": [95, 98],
   "chengyu_analysis": false,
   "chart_width_px": 1650,
   "chart_height_px": 1050,
@@ -46,8 +51,15 @@
     "chengyu_coverage": { "chengyu": [null, null] }
   },
 
-  "segment_batch_size": 64,
+  "example_sentence_min_hanzi": 6,
+  "example_sentence_max_hanzi": 20,
+
+  "segment_batch_size": 32,
+  "parallel_segmenting": true,
+  "background_charts": true,
   "clean_text": true,
+  "clear_author_notes": true,
+  "exclude_names": true,
   "ankiconnect_url": "http://127.0.0.1:8765",
   "ankiconnect_timeout": 30
 }
