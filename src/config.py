@@ -36,7 +36,8 @@ class Config:
     input_path: str = ""
     hsk_data_dir: str = "hsk_data"
     missing_words_output: str = ""
-    run_for_all_files_in_data: bool = False
+    run_for_data_files: bool = False
+    only_run_for_missing_files: bool = False
     only_run_epub: bool = False
     only_run_txt: bool = False
 

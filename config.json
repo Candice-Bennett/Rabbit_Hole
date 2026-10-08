@@ -16,7 +16,8 @@
   "input_path": "",
   "hsk_data_dir": "hsk_data",
   "missing_words_output": "",
-  "run_for_all_files_in_data": false,
+  "run_for_data_files": false,
+  "only_run_for_missing_files": false,
   "only_run_epub": false,
   "only_run_txt": false,
 

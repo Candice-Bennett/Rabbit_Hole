@@ -336,12 +336,16 @@ def find_inputs(cfg: Config, input_name: str | None) -> list[Path]:
         return [Path("data") / input_name]
     if cfg.input_path:
         return [Path(cfg.input_path)]
-    if not cfg.run_for_all_files_in_data:
-        fatal("run_for_all_files_in_data is off, so pass a filename: python main.py <filename in data/>")
+    if not cfg.run_for_data_files:
+        fatal("run_for_data_files is off, so pass a filename: python main.py <filename in data/>")
     suffixes = data_suffixes(cfg)
     inputs = sorted(p for p in Path("data").iterdir() if p.is_file() and p.suffix.lower() in suffixes)
     if not inputs:
         fatal(f"No {'/'.join(sorted(suffixes))} files found in data/")
+    if cfg.only_run_for_missing_files:
+        inputs = [p for p in inputs if not (Path("output") / p.stem).is_dir()]
+        if not inputs:
+            fatal("Every book in data/ already has an output folder, run rank.py to re-rank them", 0)
     return inputs
 
 

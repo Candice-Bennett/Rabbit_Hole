@@ -98,7 +98,7 @@ pip install -r requirements.txt
 python main.py [name of your file including extension (.txt/.epub)]
 ```
 
-or, if `input_path` is set or `run_for_all_files_in_data` is `true` in [config.json](config.json):
+or, if `input_path` is set or `run_for_data_files` is `true` in [config.json](config.json):
 
 ```
 pip install -r requirements.txt
@@ -218,9 +218,10 @@ itself is read (`exclude_names`, `clean_text`, `clear_author_notes`) and new boo
 | `input_path` | `.txt` or `.epub` to read - `""` uses the command-line filename from [data](data) instead |
 | `hsk_data_dir` | folder holding the HSK word lists |
 | `missing_words_output` | where the missing-words export goes - `""` uses `output/<book name>/missing_words.txt`. Multi-book runs always use the book's own folder |
-| `run_for_all_files_in_data` | run every file in [data](data) when no filename is given on the command line. `false` means you must pass one, i.e. `python main.py test.txt` |
-| `only_run_epub` | with `run_for_all_files_in_data`, only run the `.epub` files. If `only_run_epub` and `only_run_txt` are both `true` or both `false`, every `.txt` and `.epub` is run. Also applies to [data/books_read](data/books_read) |
-| `only_run_txt` | with `run_for_all_files_in_data`, only run the `.txt` files. Also applies to [data/books_read](data/books_read) |
+| `run_for_data_files` | run every file in [data](data) when no filename is given on the command line. `false` means you must pass one, i.e. `python main.py test.txt` |
+| `only_run_for_missing_files` | with `run_for_data_files`, only run the files that don't have an `output/<book name>` folder yet, i.e. books added since the last run. A `.txt` and `.epub` of the same book share a folder, so once one has run the other is skipped |
+| `only_run_epub` | with `run_for_data_files`, only run the `.epub` files. If `only_run_epub` and `only_run_txt` are both `true` or both `false`, every `.txt` and `.epub` is run. Also applies to [data/books_read](data/books_read) |
+| `only_run_txt` | with `run_for_data_files`, only run the `.txt` files. Also applies to [data/books_read](data/books_read) |
 | `use_chapters` | uses chapters for charts |
 | `chart_bucket_words` | words per bar in the charts when `use_chapters` is `false` |
 | `occurrence_bands` | colour bands for the occurrences charts, i.e. `[1, 5, 10, 15, 20]` colours the 1st time a word is seen, the 2nd-5th, 6th-10th, 11th-15th and 16th-20th differently. Occurrences past the last number go in a final band, i.e. 21st+  |
