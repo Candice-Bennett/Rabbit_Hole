@@ -41,7 +41,6 @@ class Settings:
     tolerance: float
     length_weight: float
     repetition_times: int
-    repetition_weight: float
 
     @property
     def has_known(self) -> bool:
@@ -497,13 +496,8 @@ def composite_scores(stats: list[BookStats], lists: list[Ranking]) -> dict[str, 
     return scores
 
 
-def composite_weight(composite: str, s: Settings) -> float:
-    return max(s.repetition_weight, 0) if composite == "repetition" else 1.0
-
-
-def overall_score(book_scores: dict[str, float], s: Settings) -> float:
-    total = sum(composite_weight(c, s) for c in book_scores)
-    return sum(p * composite_weight(c, s) for c, p in book_scores.items()) / max(total, 1e-9)
+def overall_score(book_scores: dict[str, float]) -> float:
+    return sum(book_scores.values()) / max(len(book_scores), 1)
 
 
 def composite_positions(stats: list[BookStats], scores: dict[str, dict[str, float]], composite: str) -> dict[str, int]:
@@ -573,16 +567,15 @@ def reading_order_text(
 ) -> str:
     scores = composite_scores(stats, lists)
     parts = [settings_text(s, len(stats)) + "\n"]
-    parts += [path_section(paths[kind], s, kind) for kind in PATHS]
 
     used = composites(lists)
-    overall = sorted(stats, key=lambda b: (overall_score(scores[b.book.name], s), b.book.name))
+    overall = sorted(stats, key=lambda b: (overall_score(scores[b.book.name]), b.book.name))
     positions = {c: composite_positions(stats, scores, c) for c in used}
     overall_rows = [
         [
             str(i),
             b.book.name,
-            f"{overall_score(scores[b.book.name], s) * 100:.0f}",
+            f"{overall_score(scores[b.book.name]) * 100:.0f}",
             *(str(positions[c][b.book.name]) for c in used),
             str(sum(positions[c][b.book.name] for c in used)),
         ]
@@ -595,12 +588,12 @@ def reading_order_text(
             + ", ".join(used)
             + " lists (see difficulty_lists.txt). 0 = easiest in every list, 100 = hardest in every list. "
             + ("The vocab and opening percentiles are each averaged across the HSK lists first. " if len(s.hsk_lists) > 1 else "")
-            + (f"Repetition counts {s.repetition_weight:g}x as much as each other list (repetition_weight). " if s.repetition_weight != 1 else "")
             + "Length and breadth are left out because a longer book isn't harder per page. The columns on "
             "the right are the book's position in each list, and 'total' is those positions added up. ",
             table(["#", "book", "score", *used, "total"], overall_rows),
         )
     )
+    parts += [path_section(paths[kind], s, kind) for kind in PATHS]
     return "\n".join(parts)
 
 
@@ -627,6 +620,7 @@ def write_csv(
             [f"{prefix(h)}needs_for_{t}" for t in targets]
             + [f"{prefix(h)}covered_by_hsk_{lv}" for lv in h.levels]
             + [f"{prefix(h)}opening_needs_for_{t}" for t in targets]
+            + [f"{prefix(h)}opening_covered_by_hsk_{lv}" for lv in h.levels]
         )
 
     def hsk_cells(b: BookStats, h: HskList) -> list:
@@ -634,16 +628,20 @@ def write_csv(
             [level_name(h, i) for i in b.hsk[h.name].needed]
             + [round(c, 4) for c in b.hsk[h.name].cumulative]
             + [level_name(h, i) for i in b.opening_hsk[h.name].needed]
+            + [round(c, 4) for c in b.opening_hsk[h.name].cumulative]
         )
 
     headers = (
         ["book", "source", "path_position_optimised", "path_position_word_count_adjusted"]
         + ["path_position_whole_book", "overall_score"]
-        + ["words", "hanzi", "chapters", "unique_words", "unique_hanzi"]
+        + ["words", "hanzi", "chapters", "avg_words_per_chapter", "avg_hanzi_per_chapter"]
+        + ["unique_words", "unique_hanzi", "unique_words_per_1k"]
         + [c for h in s.hsk_lists for c in hsk_headers(h)]
-        + ["opening_unique_words", "opening_unique_hanzi", "sentence_hanzi", "paragraph_hanzi", "chengyu_per_10k"]
+        + ["opening_unique_words", "opening_unique_hanzi", "opening_unique_words_per_1k"]
+        + ["sentence_hanzi", "paragraph_hanzi", "chengyu_per_10k"]
         + ["your_coverage", "your_opening_coverage"]
-        + ["repetition_share", "repeated_words", "opening_repetition_share", "opening_repeated_words"]
+        + ["repetition_share", "repeated_words", "unknown_words"]
+        + ["opening_repetition_share", "opening_repeated_words", "opening_unknown_words"]
     )
     with path.open("w", encoding="utf-8-sig", newline="") as f:
         writer = csv.writer(f)
@@ -651,15 +649,18 @@ def write_csv(
         for b in sorted(stats, key=lambda b: positions["optimised"][b.book.name]):
             writer.writerow(
                 [b.book.name, b.book.source, *(positions[kind][b.book.name] for kind in PATHS)]
-                + [round(overall_score(scores[b.book.name], s) * 100, 1)]
-                + [b.book.total, b.hanzi, b.book.chapters, len(b.book.counts), b.unique_hanzi]
+                + [round(overall_score(scores[b.book.name]) * 100, 1)]
+                + [b.book.total, b.hanzi, b.book.chapters]
+                + [round(b.book.total / max(b.book.chapters, 1), 1), round(b.hanzi / max(b.book.chapters, 1), 1)]
+                + [len(b.book.counts), b.unique_hanzi, round(len(b.book.counts) / max(b.book.total, 1) * 1000, 2)]
                 + [c for h in s.hsk_lists for c in hsk_cells(b, h)]
                 + [b.opening_new, b.opening_new_hanzi]
+                + [round(b.opening_new / max(min(b.book.total, s.opening_words), 1) * 1000, 2)]
                 + [round(b.book.sentence_hanzi, 2), round(b.book.paragraph_hanzi, 2), round(b.chengyu_per_10k, 2)]
                 + ["" if b.yours is None else round(b.yours, 4)]
                 + ["" if b.yours_opening is None else round(b.yours_opening, 4)]
-                + [round(b.repetition.share, 4), b.repetition.words]
-                + [round(b.opening_repetition.share, 4), b.opening_repetition.words]
+                + [round(b.repetition.share, 4), b.repetition.words, b.repetition.unknown]
+                + [round(b.opening_repetition.share, 4), b.opening_repetition.words, b.opening_repetition.unknown]
             )
 
 
@@ -728,7 +729,6 @@ def run_meta_analysis(
         cfg.reading_path_tolerance / 100,
         cfg.reading_path_length_weight,
         max(cfg.repetition_times, 1),
-        cfg.repetition_weight,
     )
     print(f"\nRanking {len(books)} books...")
     for path in write_meta_analysis(books, settings, OUT_DIR):

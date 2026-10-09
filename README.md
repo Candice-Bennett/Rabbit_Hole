@@ -21,7 +21,7 @@ steps live under [src](src).
   and hanzi both culumative and unique over the text of the book.
 - If `anki_analysis` is on and AnkiConnect is configured, looks up each word against your Anki
   collection and charts the same breakdowns informed by your anki stats
-- Offers to export the missing words to a text file, one line per word as
+- Exports the missing words to a text file, one line per word as
   `word<TAB>count<TAB>example sentence`, where `count` is how many times the
   word occurs in the text and the example is the first sentence the word
   occurs in that's between `example_sentence_min_hanzi` and
@@ -114,7 +114,7 @@ Every run saves a `summary.json` next to the book's charts. With `meta_analysis`
 on Rabbit-Hole ranks every book that has a summary, and writes the results to
 `output/meta-analysis/`:
 
-- `reading_order.txt`: three suggested reading paths and an overall difficulty score.
+- `reading_order.txt`: an overall difficulty score, then three suggested reading paths.
   Every path starts from the words you already know (your well-known Anki words and
   any [books you've read](#books-youve-read)), and counts every word seen
   `seen_times_to_count_as_learned` times in a book as learned for the books after it.
@@ -195,7 +195,7 @@ python rank.py
 ```
 
 This picks up any change to your Anki reviews, `hsk_version`,
-`reading_path_tolerance`, `reading_path_length_weight`, `repetition_times`, `repetition_weight`, `coverage_targets`,
+`reading_path_tolerance`, `reading_path_length_weight`, `repetition_times`, `coverage_targets`,
 `seen_times_to_count_as_learned` or the `read_books_` options. Changes to how the text
 itself is read (`opening_words`, `exclude_names`, `clean_text`, `clear_author_notes`) and new books in
 [data/books_read](data/books_read) do need `main.py` to be run again.
@@ -210,7 +210,6 @@ itself is read (`opening_words`, `exclude_names`, `clean_text`, `clear_author_no
 | `reading_path_tolerance` | for the optimised reading path, the most (in percentage points of the opening understood) a book can be harder than the easiest unread book at that point |
 | `reading_path_length_weight` | how much harder the reading paths treat longer books: a book's difficulty is multiplied by its length divided by the median book length, to this power. e.g. `0.1` treats a book 4x the median length as about 15% harder and one a quarter of the median as about 13% easier, while `0.3` makes those about 52% harder and 34% easier. `0` ignores length |
 | `repetition_times` | for the repetition list, how many times a word you don't know yet has to appear to count as repeated, e.g. `10` |
-| `repetition_weight` | how much the repetition list counts towards the overall difficulty score, compared with the other lists e.g. `3` makes it count three times as much as other metrics |
 | `seen_times_to_count_as_learned` | for the known coverage charts, once a word or hanzi has been seen this many times in the text, later appearances count as known `0` turns this off |
 | `use_read_books` | count the vocabulary of the books in [data/books_read](data/books_read) as known (see [Books you've read](#books-youve-read)) |
 | `read_books_knowledge` | how a book you've read adds known words: `"seen_times"` or `"percentage_understood"` |

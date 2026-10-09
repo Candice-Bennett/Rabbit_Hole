@@ -312,13 +312,7 @@ def analyse_book(
     if not missing:
         return
     book_out = str(Path("output") / run.stem / "missing_words.txt")
-    if batch:
-        out = book_out
-    else:
-        answer = input(f"\nExport the {len(missing)} missing words to a file? (y/n): ").strip().lower()
-        if answer != "y":
-            return
-        out = cfg.missing_words_output or book_out
+    out = book_out if batch else cfg.missing_words_output or book_out
     export_missing(missing, out)
     print(f"Wrote {out!r}, {len(missing)} words")
 
