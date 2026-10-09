@@ -23,6 +23,7 @@ class Config:
     reading_path_tolerance: float = 2.0
     reading_path_length_weight: float = 0.1
     repetition_times: int = 10
+    words_to_learn: int = 500
 
     # Already known
     seen_times_to_count_as_learned: int = 25

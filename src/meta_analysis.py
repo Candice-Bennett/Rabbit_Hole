@@ -13,11 +13,12 @@ from typing import Any
 
 import numpy as np
 
-from anki_know import AnkiKnowledge
+from anki_know import AnkiKnowledge, export_missing
 from config import Config
 from console import warn
 from hanzi import HAS_HANZI, hanzi_count
 from hsk import HskList
+from models import WordCandidate
 from read_books import ReadKnowledge, read_books_knowledge
 from summary import BookSummary, load_summaries
 
@@ -41,6 +42,7 @@ class Settings:
     tolerance: float
     length_weight: float
     repetition_times: int
+    words_to_learn: int
 
     @property
     def has_known(self) -> bool:
@@ -103,6 +105,20 @@ class Ranking:
     headers: list[str]
     row: Callable[[BookStats], list[str]]
     composite: str = ""
+
+
+@dataclass
+class LearnWord:
+    word: str
+    per_10k: float
+    books: int
+    uses: int
+    most_in: str
+    most_uses: int
+    share: float = 0.0
+    running: float = 0.0
+    example: str = ""
+    example_uses: int = 0
 
 
 @dataclass
@@ -664,6 +680,49 @@ def write_csv(
             )
 
 
+def words_to_learn(stats: list[BookStats], s: Settings) -> list[LearnWord]:
+    rates: dict[str, float] = {}
+    found: dict[str, LearnWord] = {}
+    for b in stats:
+        for w, c in b.book.counts.items():
+            if w in s.known or not hanzi_count(w):
+                continue
+            rates[w] = rates.get(w, 0.0) + c / b.book.total * 10000
+            entry = found.setdefault(w, LearnWord(w, 0.0, 0, 0, "", 0))
+            entry.books += 1
+            entry.uses += c
+            if c > entry.most_uses:
+                entry.most_in, entry.most_uses = b.book.name, c
+            example = b.book.examples.get(w, "")
+            if example and c > entry.example_uses:
+                entry.example, entry.example_uses = example, c
+    ranked = sorted(rates, key=lambda w: (-rates[w], w))[: s.words_to_learn if s.words_to_learn > 0 else None]
+    total = max(sum(w.uses for w in found.values()), 1)
+    running = 0.0
+    for w in ranked:
+        found[w].per_10k = rates[w] / len(stats)
+        found[w].share = found[w].uses / total
+        running += found[w].share
+        found[w].running = running
+    return [found[w] for w in ranked]
+
+
+def write_words_csv(path: Path, words: list[LearnWord], s: Settings) -> None:
+    with path.open("w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(
+            ["word", "uses_per_10k", "books", "total_uses", "share", "running_total"]
+            + [h.name.replace(" ", "").lower() + "_level" for h in s.hsk_lists]
+            + ["most_in", "most_in_uses"]
+        )
+        for w in words:
+            writer.writerow(
+                [w.word, round(w.per_10k, 2), w.books, w.uses, round(w.share, 5), round(w.running, 4)]
+                + [h.level_of(w.word) or "" for h in s.hsk_lists]
+                + [w.most_in, w.most_uses]
+            )
+
+
 def write_meta_analysis(books: list[BookSummary], s: Settings, out_dir: Path) -> list[Path]:
     stats = [book_stats(b, s) for b in books if b.total]
     lists = rankings(s)
@@ -674,6 +733,16 @@ def write_meta_analysis(books: list[BookSummary], s: Settings, out_dir: Path) ->
     paths[0].write_text(reading_order_text(stats, lists, orders, s), encoding="utf-8")
     paths[1].write_text(difficulty_lists_text(stats, lists, s), encoding="utf-8")
     write_csv(paths[2], stats, lists, orders, s)
+    if s.words_to_learn:
+        words = words_to_learn(stats, s)
+        paths += [out_dir / "words_to_learn.csv", out_dir / "words_to_learn.txt"]
+        write_words_csv(paths[3], words, s)
+        export_missing([WordCandidate(w.word, w.uses, w.example) for w in words], str(paths[4]))
+        no_examples = sorted(b.book.name for b in stats if not b.book.examples)
+        if no_examples:
+            warn(f"Meta-analysis: {len(no_examples)} book(s) have no example sentences saved yet, run main.py on them again to use their sentences in words_to_learn.txt:")
+            for name in no_examples:
+                warn(f"  - {name}")
     return paths
 
 
@@ -729,6 +798,7 @@ def run_meta_analysis(
         cfg.reading_path_tolerance / 100,
         cfg.reading_path_length_weight,
         max(cfg.repetition_times, 1),
+        cfg.words_to_learn,
     )
     print(f"\nRanking {len(books)} books...")
     for path in write_meta_analysis(books, settings, OUT_DIR):

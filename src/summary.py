@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections import Counter
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from console import warn
@@ -21,6 +21,7 @@ class BookSummary:
     opening_words: int
     counts: dict[str, int]
     opening_counts: dict[str, int]
+    examples: dict[str, str] = field(default_factory=dict)
 
     @property
     def total(self) -> int:
@@ -35,6 +36,7 @@ def build_summary(
     paragraph_hanzi: float,
     opening_words: int,
     exclude_names: bool,
+    examples: dict[str, str] | None = None,
 ) -> BookSummary:
     words = [w for chapter in words_by_chapter for w in chapter]
     return BookSummary(
@@ -47,6 +49,7 @@ def build_summary(
         opening_words,
         dict(Counter(words).most_common()),
         dict(Counter(words[:opening_words]).most_common()),
+        examples or {},
     )
 
 

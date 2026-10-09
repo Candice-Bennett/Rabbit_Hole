@@ -283,6 +283,7 @@ def analyse_book(
         lengths.overall_paragraph,
         cfg.opening_words,
         cfg.exclude_names,
+        {c.text: c.example for c in candidates},
     )
     print(f"Wrote {str(save_summary(summary, Path('output') / run.stem))!r} (for rank.py)")
 
