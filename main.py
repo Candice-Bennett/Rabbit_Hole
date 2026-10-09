@@ -25,7 +25,7 @@ from chart import (
 )
 from config import Config
 from console import fatal, warn
-from hsk import HskList, load_hsk
+from hsk import HskList, load_hsk, select_hsk
 from ingest import load_text
 from meta_analysis import run_meta_analysis
 from models import WordCandidate
@@ -358,8 +358,9 @@ def main(input_name: str | None = None) -> None:
         if not path.is_file():
             fatal(f"Couldn't find input file {str(path)!r}, check the filename (or input_path in config.json)")
 
-    hsk = load_hsk(cfg.hsk_data_dir)
-    force_words = set().union(*(hsk_list.all_words() for hsk_list in hsk.values()))
+    all_hsk = load_hsk(cfg.hsk_data_dir)
+    force_words = set().union(*(hsk_list.all_words() for hsk_list in all_hsk.values()))
+    hsk = select_hsk(all_hsk, cfg.hsk_version)
     service = WordAnalysisService(
         force_words,
         cfg.segment_batch_size,

@@ -16,7 +16,7 @@ steps live under [src](src).
 - Loads the text (`.txt` or `.epub`) and cleans [Novel-Downloader](https://github.com/404-novel-project/novel-downloader) noise.
 - Segments it with HanLP, counting how many times each word appears.
 - Compares every word against HSK 2.0, HSK 3.0 and HSK 3.1 and charts the breakdown by
-  level.
+  level, for one list or all of them (`hsk_version`).
 - Gives you an almost overwhelming amount of data about your text giving an analysis of words
   and hanzi both culumative and unique over the text of the book.
 - If `anki_analysis` is on and AnkiConnect is configured, looks up each word against your Anki
@@ -193,7 +193,7 @@ seconds:
 python rank.py
 ```
 
-This picks up any change to your Anki reviews, `opening_words`, `ranking_hsk_version`,
+This picks up any change to your Anki reviews, `opening_words`, `hsk_version`,
 `reading_path_tolerance`, `reading_path_length_weight`, `coverage_targets`,
 `seen_times_to_count_as_learned` or the `read_books_` options. Changes to how the text
 itself is read (`exclude_names`, `clean_text`, `clear_author_notes`) and new books in
@@ -205,7 +205,7 @@ itself is read (`exclude_names`, `clean_text`, `clear_author_notes`) and new boo
 |---|---|
 | `meta_analysis` | after the run, rank every analysed book by difficulty and suggest a reading order (see [Ranking your books](#ranking-your-books)) |
 | `opening_words` | how many words from the start of each book the ranking uses for its opening difficulty, new-word density and word count adjusted measures |
-| `ranking_hsk_version` | which HSK list the ranking uses: `"2.0"`, `"3.0"` or `"3.1"` |
+| `hsk_version` | which HSK list the HSK charts and the meta-analysis use: `"2.0"`, `"3.0"`, `"3.1"` or `"all"`. |
 | `reading_path_tolerance` | for the optimised reading path, the most (in percentage points of the opening understood) a book can be harder than the easiest unread book at that point |
 | `reading_path_length_weight` | how much harder the reading paths treat longer books: a book's difficulty is multiplied by its length divided by the median book length, to this power. e.g. `0.1` treats a book 4x the median length as about 15% harder and one a quarter of the median as about 13% easier, while `0.3` makes those about 52% harder and 34% easier. `0` ignores length |
 | `seen_times_to_count_as_learned` | for the known coverage charts, once a word or hanzi has been seen this many times in the text, later appearances count as known `0` turns this off |

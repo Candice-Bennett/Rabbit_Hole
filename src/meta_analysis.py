@@ -31,7 +31,7 @@ PATHS = ("optimised", "adjusted", "whole")
 
 @dataclass
 class Settings:
-    hsk_list: HskList
+    hsk_lists: list[HskList]
     targets: list[float]
     learned_after: int
     opening_words: int
@@ -72,8 +72,8 @@ class BookStats:
     book: BookSummary
     hanzi: int
     unique_hanzi: int
-    hsk: HskFit
-    opening_hsk: HskFit
+    hsk: dict[str, HskFit]
+    opening_hsk: dict[str, HskFit]
     opening_new: int
     opening_new_hanzi: int
     chengyu_per_10k: float
@@ -142,8 +142,8 @@ def book_stats(book: BookSummary, s: Settings) -> BookStats:
         book,
         sum(hanzi_count(w) * c for w, c in book.counts.items()),
         unique_hanzi(book.counts),
-        hsk_fit(book.counts, s.hsk_list, s.targets),
-        hsk_fit(book.opening_counts, s.hsk_list, s.targets),
+        {h.name: hsk_fit(book.counts, h, s.targets) for h in s.hsk_lists},
+        {h.name: hsk_fit(book.opening_counts, h, s.targets) for h in s.hsk_lists},
         len(book.opening_counts),
         unique_hanzi(book.opening_counts),
         chengyu / book.total * 10000 if book.total else 0.0,
@@ -290,44 +290,49 @@ def short_mark(b: BookStats) -> str:
     return "*" if b.short else ""
 
 
+def vocab_ranking(s: Settings, hsk_list: HskList, targets: list[str]) -> Ranking:
+    name = hsk_list.name
+    return Ranking(
+        f"Vocabulary level ({name})",
+        f"The {name} level you'd need to know every word in to cover {' / '.join(targets)} of the text, "
+        f"then the share of the text covered by each level and below. Books that need the same level are "
+        f"ordered by how much of the text that level covers, so books 'past HSK' are ordered by how much "
+        f"of the text is in {name} at all.",
+        lambda b: b.hsk[name].key,
+        [f"{t} needs" for t in targets] + [f"<=HSK {lv}" for lv in hsk_list.levels],
+        lambda b: [level_name(hsk_list, i) for i in b.hsk[name].needed] + [pct(c) for c in b.hsk[name].cumulative],
+        "vocab",
+    )
+
+
+def opening_ranking(s: Settings, hsk_list: HskList, targets: list[str]) -> Ranking:
+    name = hsk_list.name
+    return Ranking(
+        f"Opening difficulty ({name}, first {s.opening_words:,} words)",
+        "Same as vocabulary level, but only the start of the book. "
+        + ("Your coverage is shown for reference, but the order is by HSK. " if s.has_known else "")
+        + "\n* = book is shorter than the sample, so this is the whole book.",
+        lambda b: b.opening_hsk[name].key,
+        [f"{t} needs" for t in targets]
+        + [f"all {name}"]
+        + (["your coverage"] if s.has_known else []),
+        lambda b: [level_name(hsk_list, i) + short_mark(b) for i in b.opening_hsk[name].needed]
+        + [pct(b.opening_hsk[name].cumulative[-1])]
+        + ([pct(b.yours_opening)] if s.has_known else []),
+        "opening",
+    )
+
+
 def rankings(s: Settings) -> list[Ranking]:
-    levels = s.hsk_list.levels
     targets = [f"{t * 100:g}%" for t in s.targets]
-    name = s.hsk_list.name
     opening = f"{s.opening_words:,}"
 
     def opening_density(b: BookStats) -> float:
         return b.opening_new / max(min(b.book.total, s.opening_words), 1)
 
-    def fit_cells(fit: HskFit) -> list[str]:
-        return [level_name(s.hsk_list, i) for i in fit.needed]
-
     lists = [
-        Ranking(
-            f"Vocabulary level ({name})",
-            f"The {name} level you'd need to know every word in to cover {' / '.join(targets)} of the text, "
-            f"then the share of the text covered by each level and below. Books that need the same level are "
-            f"ordered by how much of the text that level covers, so books 'past HSK' are ordered by how much "
-            f"of the text is in {name} at all.",
-            lambda b: b.hsk.key,
-            [f"{t} needs" for t in targets] + [f"<=HSK {lv}" for lv in levels],
-            lambda b: fit_cells(b.hsk) + [pct(c) for c in b.hsk.cumulative],
-            "vocab",
-        ),
-        Ranking(
-            f"Opening difficulty (first {s.opening_words:,} words)",
-            "Same as vocabulary level, but only the start of the book. "
-            + ("Your coverage is shown for reference, but the order is by HSK. " if s.has_known else "")
-            + "\n* = book is shorter than the sample, so this is the whole book.",
-            lambda b: b.opening_hsk.key,
-            [f"{t} needs" for t in targets]
-            + [f"all {name}"]
-            + (["your coverage"] if s.has_known else []),
-            lambda b: [c + short_mark(b) for c in fit_cells(b.opening_hsk)]
-            + [pct(b.opening_hsk.cumulative[-1])]
-            + ([pct(b.yours_opening)] if s.has_known else []),
-            "opening",
-        ),
+        *(vocab_ranking(s, h, targets) for h in s.hsk_lists),
+        *(opening_ranking(s, h, targets) for h in s.hsk_lists),
         Ranking(
             "New-word density",
             f"Unique words and hanzi, and unique words per 1,000 words, in the first {opening} words "
@@ -434,20 +439,29 @@ def ranked(stats: list[BookStats], key: Callable[[BookStats], Any]) -> list[Book
     return sorted(stats, key=lambda b: (key(b), b.book.name))
 
 
+def composites(lists: list[Ranking]) -> list[str]:
+    return list(dict.fromkeys(r.composite for r in lists if r.composite))
+
+
 def composite_scores(stats: list[BookStats], lists: list[Ranking]) -> dict[str, dict[str, float]]:
     scores: dict[str, dict[str, float]] = {b.book.name: {} for b in stats}
-    for r in lists:
-        if not r.composite:
-            continue
-        for b, p in zip(stats, percentiles([r.key(b) for b in stats])):
-            scores[b.book.name][r.composite] = p
+    for composite in composites(lists):
+        shared = [r for r in lists if r.composite == composite]
+        for r in shared:
+            for b, p in zip(stats, percentiles([r.key(b) for b in stats])):
+                scores[b.book.name][composite] = scores[b.book.name].get(composite, 0.0) + p / len(shared)
     return scores
+
+
+def composite_positions(stats: list[BookStats], scores: dict[str, dict[str, float]], composite: str) -> dict[str, int]:
+    order = sorted(stats, key=lambda b: (scores[b.book.name][composite], b.book.name))
+    return {b.book.name: i for i, b in enumerate(order, 1)}
 
 
 def settings_text(s: Settings, books: int) -> str:
     lines = [
         f"Books ranked: {books}",
-        f"HSK list: {s.hsk_list.name}",
+        f"HSK list{'s' if len(s.hsk_lists) > 1 else ''}: {', '.join(h.name for h in s.hsk_lists)}",
         f"Opening sample: first {s.opening_words:,} words",
         f"A word counts as learned after being seen {s.learned_after} times"
         if s.learned_after
@@ -508,16 +522,16 @@ def reading_order_text(
     parts = [settings_text(s, len(stats)) + "\n"]
     parts += [path_section(paths[kind], s, kind) for kind in PATHS]
 
-    used = [r for r in lists if r.composite]
+    used = composites(lists)
     overall = sorted(stats, key=lambda b: (sum(scores[b.book.name].values()) / len(used), b.book.name))
-    positions = {r.composite: {b.book.name: i for i, b in enumerate(ranked(stats, r.key), 1)} for r in used}
+    positions = {c: composite_positions(stats, scores, c) for c in used}
     overall_rows = [
         [
             str(i),
             b.book.name,
             f"{sum(scores[b.book.name].values()) / len(used) * 100:.0f}",
-            *(str(positions[r.composite][b.book.name]) for r in used),
-            str(sum(positions[r.composite][b.book.name] for r in used)),
+            *(str(positions[c][b.book.name]) for c in used),
+            str(sum(positions[c][b.book.name] for c in used)),
         ]
         for i, b in enumerate(overall, 1)
     ]
@@ -525,11 +539,12 @@ def reading_order_text(
         section(
             "Overall difficulty",
             "Average of each book's percentile in the "
-            + ", ".join(r.composite for r in used)
+            + ", ".join(used)
             + " lists (see difficulty_lists.txt). 0 = easiest in every list, 100 = hardest in every list. "
-            "Length and breadth are left out because a longer book isn't harder per page. The columns on "
+            + ("The vocab and opening percentiles are each averaged across the HSK lists first. " if len(s.hsk_lists) > 1 else "")
+            + "Length and breadth are left out because a longer book isn't harder per page. The columns on "
             "the right are the book's position in each list, and 'total' is those positions added up. ",
-            table(["#", "book", "score", *(r.composite for r in used), "total"], overall_rows),
+            table(["#", "book", "score", *used, "total"], overall_rows),
         )
     )
     return "\n".join(parts)
@@ -547,17 +562,32 @@ def write_csv(
     path: Path, stats: list[BookStats], lists: list[Ranking], paths: dict[str, list[PathStep]], s: Settings
 ) -> None:
     scores = composite_scores(stats, lists)
-    used = sum(1 for r in lists if r.composite)
+    used = len(composites(lists))
     positions = {kind: {st.stats.book.name: i for i, st in enumerate(paths[kind], 1)} for kind in PATHS}
-    levels = s.hsk_list.levels
     targets = [f"{t * 100:g}" for t in s.targets]
+
+    def prefix(h: HskList) -> str:
+        return h.name.replace(" ", "").lower() + "_" if len(s.hsk_lists) > 1 else ""
+
+    def hsk_headers(h: HskList) -> list[str]:
+        return (
+            [f"{prefix(h)}needs_for_{t}" for t in targets]
+            + [f"{prefix(h)}covered_by_hsk_{lv}" for lv in h.levels]
+            + [f"{prefix(h)}opening_needs_for_{t}" for t in targets]
+        )
+
+    def hsk_cells(b: BookStats, h: HskList) -> list:
+        return (
+            [level_name(h, i) for i in b.hsk[h.name].needed]
+            + [round(c, 4) for c in b.hsk[h.name].cumulative]
+            + [level_name(h, i) for i in b.opening_hsk[h.name].needed]
+        )
+
     headers = (
         ["book", "source", "path_position_optimised", "path_position_word_count_adjusted"]
         + ["path_position_whole_book", "overall_score"]
         + ["words", "hanzi", "chapters", "unique_words", "unique_hanzi"]
-        + [f"needs_for_{t}" for t in targets]
-        + [f"covered_by_hsk_{lv}" for lv in levels]
-        + [f"opening_needs_for_{t}" for t in targets]
+        + [c for h in s.hsk_lists for c in hsk_headers(h)]
         + ["opening_unique_words", "opening_unique_hanzi", "sentence_hanzi", "paragraph_hanzi", "chengyu_per_10k"]
         + ["your_coverage", "your_opening_coverage"]
     )
@@ -569,9 +599,7 @@ def write_csv(
                 [b.book.name, b.book.source, *(positions[kind][b.book.name] for kind in PATHS)]
                 + [round(sum(scores[b.book.name].values()) / used * 100, 1)]
                 + [b.book.total, b.hanzi, b.book.chapters, len(b.book.counts), b.unique_hanzi]
-                + [level_name(s.hsk_list, i) for i in b.hsk.needed]
-                + [round(c, 4) for c in b.hsk.cumulative]
-                + [level_name(s.hsk_list, i) for i in b.opening_hsk.needed]
+                + [c for h in s.hsk_lists for c in hsk_cells(b, h)]
                 + [b.opening_new, b.opening_new_hanzi]
                 + [round(b.book.sentence_hanzi, 2), round(b.book.paragraph_hanzi, 2), round(b.chengyu_per_10k, 2)]
                 + ["" if b.yours is None else round(b.yours, 4)]
@@ -614,11 +642,6 @@ def run_meta_analysis(
     if len({b.exclude_names for b in books}) > 1:
         warn("Meta-analysis: some books were run with exclude_names on and some off, so their numbers aren't comparable")
 
-    hsk_list = hsk.get(cfg.ranking_hsk_version)
-    if hsk_list is None:
-        warn(f"Meta-analysis: unknown ranking_hsk_version {cfg.ranking_hsk_version!r} (use one of {list(hsk)}), using 3.1")
-        hsk_list = hsk["3.1"]
-
     anki_known = knowledge.known_words() if knowledge else set()
     read = read if read is not None else read_books_knowledge(cfg)
     sources, lines = [], []
@@ -634,7 +657,7 @@ def run_meta_analysis(
     read_known = read.known
 
     settings = Settings(
-        hsk_list,
+        list(hsk.values()),
         sorted(t / 100 for t in cfg.coverage_targets) or [0.98],
         max(cfg.seen_times_to_count_as_learned, 0),
         cfg.opening_words,

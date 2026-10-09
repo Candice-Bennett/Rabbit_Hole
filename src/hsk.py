@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from console import warn
+
 HSK2_LEVELS = ["1", "2", "3", "4", "5", "6"]
 HSK3_LEVELS = ["1", "2", "3", "4", "5", "6", "7-9"]
 
@@ -41,3 +43,13 @@ def load_hsk(base_dir: str = "hsk_data") -> dict[str, HskList]:
         "3.0": _load(base / "HSK3.0", "HSK3.0", "HSK 3.0", HSK3_LEVELS),
         "3.1": _load(base / "HSK3.1", "HSK3.1", "HSK 3.1", HSK3_LEVELS),
     }
+
+
+def select_hsk(hsk: dict[str, HskList], version: str) -> dict[str, HskList]:
+    version = str(version)
+    if version == "all":
+        return hsk
+    if version in hsk:
+        return {version: hsk[version]}
+    warn(f"Config: unknown hsk_version {version!r} (use one of {[*hsk, 'all']}), using all")
+    return hsk

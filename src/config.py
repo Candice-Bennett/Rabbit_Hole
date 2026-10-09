@@ -19,7 +19,7 @@ class Config:
     # Meta-analysis
     meta_analysis: bool = False
     opening_words: int = 20000
-    ranking_hsk_version: str = "3.1"
+    hsk_version: str = "all"
     reading_path_tolerance: float = 2.0
     reading_path_length_weight: float = 0.1
 
