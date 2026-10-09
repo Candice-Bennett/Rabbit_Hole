@@ -1,19 +1,19 @@
 {
   "meta_analysis": false,
+  "opening_words": 20000,
   "hsk_version": "all",
   "reading_path_tolerance": 2.0,
   "reading_path_length_weight": 0.1,
+  "repetition_times": 10,
+  "repetition_weight": 1.0,
   "seen_times_to_count_as_learned": 25,
   "use_read_books": false,
   "read_books_knowledge": "seen_times",
   "read_books_percentage_understood": 95,
   "anki_analysis": false,
   "mature_interval_days": 21,
-  "anki_fields": [
-    { "note_type": "Basic - New HSK (2025) - meaning", "field_name": "Simplified" },
-    { "note_type": "Tuzi", "field_name": "Hanzi" }
-  ],
-  
+  "anki_fields": [],
+
   "input_path": "",
   "hsk_data_dir": "hsk_data",
   "missing_words_output": "",
@@ -23,7 +23,7 @@
   "only_run_txt": false,
 
   "use_chapters": true,
-  "chart_bucket_words": 1000,
+  "chart_bucket_words": 5000,
   "occurrence_bands": [1, 5, 10, 15, 20, 25],
   "occurrence_overflow_band": true,
   "coverage_targets": [95, 98],

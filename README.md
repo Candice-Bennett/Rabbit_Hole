@@ -128,10 +128,11 @@ on Rabbit-Hole ranks every book that has a summary, and writes the results to
     repeat their words more.
   - The whole book path always picks the book you'd know the most of overall.
 - `difficulty_lists.txt`: separate easiest-first lists for each measure: how much
-  you'd know (first `opening_words` words and whole book), the HSK level needed for
-  each of the `coverage_targets`,
-  opening difficulty, new-word density, sentence length, chengyu density,
-  vocabulary breadth and length.
+  you'd know (first `opening_words` words and whole book), repetition, new-word density,
+  sentence length, chengyu density, length and vocabulary breadth, then the HSK lists:
+  opening difficulty and the HSK level needed for each of the `coverage_targets`.
+  Repetition is how much of the words you don't know yet come back `repetition_times`
+  or more times, since words that keep coming back are easier to pick up while reading.
 - `books.csv`: every number for every book, for a spreadsheet.
 
 To re-rank without re-analysing anything (e.g. after your Anki reviews have moved
@@ -193,10 +194,10 @@ seconds:
 python rank.py
 ```
 
-This picks up any change to your Anki reviews, `opening_words`, `hsk_version`,
-`reading_path_tolerance`, `reading_path_length_weight`, `coverage_targets`,
+This picks up any change to your Anki reviews, `hsk_version`,
+`reading_path_tolerance`, `reading_path_length_weight`, `repetition_times`, `repetition_weight`, `coverage_targets`,
 `seen_times_to_count_as_learned` or the `read_books_` options. Changes to how the text
-itself is read (`exclude_names`, `clean_text`, `clear_author_notes`) and new books in
+itself is read (`opening_words`, `exclude_names`, `clean_text`, `clear_author_notes`) and new books in
 [data/books_read](data/books_read) do need `main.py` to be run again.
 
 ## Config ([config.json](config.json))
@@ -204,10 +205,12 @@ itself is read (`exclude_names`, `clean_text`, `clear_author_notes`) and new boo
 | Flag | What it does |
 |---|---|
 | `meta_analysis` | after the run, rank every analysed book by difficulty and suggest a reading order (see [Ranking your books](#ranking-your-books)) |
-| `opening_words` | how many words from the start of each book the ranking uses for its opening difficulty, new-word density and word count adjusted measures |
+| `opening_words` | how many words from the start of each book the ranking uses for its opening difficulty, new-word density, repetition and word count adjusted measures, so every book is judged on the same amount of text. Changing it needs `main.py` run again on every book (with `only_run_for_missing_files` off) |
 | `hsk_version` | which HSK list the HSK charts and the meta-analysis use: `"2.0"`, `"3.0"`, `"3.1"` or `"all"`. |
 | `reading_path_tolerance` | for the optimised reading path, the most (in percentage points of the opening understood) a book can be harder than the easiest unread book at that point |
 | `reading_path_length_weight` | how much harder the reading paths treat longer books: a book's difficulty is multiplied by its length divided by the median book length, to this power. e.g. `0.1` treats a book 4x the median length as about 15% harder and one a quarter of the median as about 13% easier, while `0.3` makes those about 52% harder and 34% easier. `0` ignores length |
+| `repetition_times` | for the repetition list, how many times a word you don't know yet has to appear to count as repeated, e.g. `10` |
+| `repetition_weight` | how much the repetition list counts towards the overall difficulty score, compared with the other lists e.g. `3` makes it count three times as much as other metrics |
 | `seen_times_to_count_as_learned` | for the known coverage charts, once a word or hanzi has been seen this many times in the text, later appearances count as known `0` turns this off |
 | `use_read_books` | count the vocabulary of the books in [data/books_read](data/books_read) as known (see [Books you've read](#books-youve-read)) |
 | `read_books_knowledge` | how a book you've read adds known words: `"seen_times"` or `"percentage_understood"` |

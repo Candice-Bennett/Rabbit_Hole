@@ -40,6 +40,8 @@ class Settings:
     known_lines: list[str]
     tolerance: float
     length_weight: float
+    repetition_times: int
+    repetition_weight: float
 
     @property
     def has_known(self) -> bool:
@@ -68,6 +70,13 @@ class HskFit:
 
 
 @dataclass
+class Repetition:
+    share: float
+    words: int
+    unknown: int
+
+
+@dataclass
 class BookStats:
     book: BookSummary
     hanzi: int
@@ -79,6 +88,8 @@ class BookStats:
     chengyu_per_10k: float
     yours: float | None
     yours_opening: float | None
+    repetition: Repetition
+    opening_repetition: Repetition
 
     @property
     def short(self) -> bool:
@@ -134,6 +145,12 @@ def coverage(counts: dict[str, int], known: set[str], learned_after: int) -> flo
     return 1 - unknown / total
 
 
+def repetition(counts: dict[str, int], known: set[str], times: int) -> Repetition:
+    unknown = {w: c for w, c in counts.items() if w not in known and hanzi_count(w)}
+    repeated = {w: c for w, c in unknown.items() if c >= times}
+    return Repetition(sum(repeated.values()) / max(sum(unknown.values()), 1), len(repeated), len(unknown))
+
+
 def book_stats(book: BookSummary, s: Settings) -> BookStats:
     chengyu = sum(c for w, c in book.counts.items() if hanzi_count(w) >= 4)
     yours = coverage(book.counts, s.known, s.learned_after) if s.has_known else None
@@ -149,6 +166,8 @@ def book_stats(book: BookSummary, s: Settings) -> BookStats:
         chengyu / book.total * 10000 if book.total else 0.0,
         yours,
         yours_opening,
+        repetition(book.counts, s.known, s.repetition_times),
+        repetition(book.opening_counts, s.known, s.repetition_times),
     )
 
 
@@ -309,7 +328,9 @@ def opening_ranking(s: Settings, hsk_list: HskList, targets: list[str]) -> Ranki
     name = hsk_list.name
     return Ranking(
         f"Opening difficulty ({name}, first {s.opening_words:,} words)",
-        "Same as vocabulary level, but only the start of the book. "
+        f"The {name} level you'd need to know every word in to cover {' / '.join(targets)} of the first "
+        f"{s.opening_words:,} words, then the share of those words that are in {name} at all. The vocabulary "
+        "level lists below do the same for the whole book. "
         + ("Your coverage is shown for reference, but the order is by HSK. " if s.has_known else "")
         + "\n* = book is shorter than the sample, so this is the whole book.",
         lambda b: b.opening_hsk[name].key,
@@ -326,13 +347,34 @@ def opening_ranking(s: Settings, hsk_list: HskList, targets: list[str]) -> Ranki
 def rankings(s: Settings) -> list[Ranking]:
     targets = [f"{t * 100:g}%" for t in s.targets]
     opening = f"{s.opening_words:,}"
+    unknown = "words you don't know yet" if s.has_known else "words in the book"
+    each = "word you don't know yet" if s.has_known else "word"
 
     def opening_density(b: BookStats) -> float:
         return b.opening_new / max(min(b.book.total, s.opening_words), 1)
 
     lists = [
-        *(vocab_ranking(s, h, targets) for h in s.hsk_lists),
-        *(opening_ranking(s, h, targets) for h in s.hsk_lists),
+        Ranking(
+            "Repetition",
+            f"How often the {unknown} come back. A word counts as repeated once it's used "
+            f"{s.repetition_times} or more times.\n"
+            f"- share: each time you come across a {each}, the chance it's a repeated word. e.g. 40% "
+            f"means 4 in every 10 are words that come up at least {s.repetition_times} times, so you get "
+            "plenty of practice with them.\n"
+            f"- words: how many different words are repeated, out of all the different {unknown}.\n"
+            f"Ordered by share in the first {opening} words, highest (easiest) first. The whole book columns "
+            "favour longer books, so they're for reference only and don't count towards the overall score.\n"
+            "* = book is shorter than the sample, so this is the whole book.",
+            lambda b: (-b.opening_repetition.share,),
+            [f"share, first {opening}", f"words, first {opening}", "share, whole book", "words, whole book"],
+            lambda b: [
+                pct(b.opening_repetition.share) + short_mark(b),
+                f"{b.opening_repetition.words:,} of {b.opening_repetition.unknown:,}",
+                pct(b.repetition.share),
+                f"{b.repetition.words:,} of {b.repetition.unknown:,}",
+            ],
+            "repetition",
+        ),
         Ranking(
             "New-word density",
             f"Unique words and hanzi, and unique words per 1,000 words, in the first {opening} words "
@@ -374,13 +416,6 @@ def rankings(s: Settings) -> list[Ranking]:
             lambda b: [f"{b.chengyu_per_10k:.1f}"],
         ),
         Ranking(
-            "Vocabulary breadth",
-            "Unique words and hanzi in the whole book. Note that longer books naturally have more.",
-            lambda b: (len(b.book.counts), b.unique_hanzi),
-            ["unique words", "unique hanzi"],
-            lambda b: [f"{len(b.book.counts):,}", f"{b.unique_hanzi:,}"],
-        ),
-        Ranking(
             "Length",
             "Total words, hanzi and chapters, and the average words and hanzi per chapter.",
             lambda b: (b.book.total,),
@@ -393,6 +428,15 @@ def rankings(s: Settings) -> list[Ranking]:
                 f"{b.hanzi / max(b.book.chapters, 1):,.0f}",
             ],
         ),
+        Ranking(
+            "Vocabulary breadth",
+            "Unique words and hanzi in the whole book. Note that longer books naturally have more.",
+            lambda b: (len(b.book.counts), b.unique_hanzi),
+            ["unique words", "unique hanzi"],
+            lambda b: [f"{len(b.book.counts):,}", f"{b.unique_hanzi:,}"],
+        ),
+        *(opening_ranking(s, h, targets) for h in s.hsk_lists),
+        *(vocab_ranking(s, h, targets) for h in s.hsk_lists),
     ]
     if s.has_known:
         lists.insert(
@@ -451,6 +495,15 @@ def composite_scores(stats: list[BookStats], lists: list[Ranking]) -> dict[str, 
             for b, p in zip(stats, percentiles([r.key(b) for b in stats])):
                 scores[b.book.name][composite] = scores[b.book.name].get(composite, 0.0) + p / len(shared)
     return scores
+
+
+def composite_weight(composite: str, s: Settings) -> float:
+    return max(s.repetition_weight, 0) if composite == "repetition" else 1.0
+
+
+def overall_score(book_scores: dict[str, float], s: Settings) -> float:
+    total = sum(composite_weight(c, s) for c in book_scores)
+    return sum(p * composite_weight(c, s) for c, p in book_scores.items()) / max(total, 1e-9)
 
 
 def composite_positions(stats: list[BookStats], scores: dict[str, dict[str, float]], composite: str) -> dict[str, int]:
@@ -523,13 +576,13 @@ def reading_order_text(
     parts += [path_section(paths[kind], s, kind) for kind in PATHS]
 
     used = composites(lists)
-    overall = sorted(stats, key=lambda b: (sum(scores[b.book.name].values()) / len(used), b.book.name))
+    overall = sorted(stats, key=lambda b: (overall_score(scores[b.book.name], s), b.book.name))
     positions = {c: composite_positions(stats, scores, c) for c in used}
     overall_rows = [
         [
             str(i),
             b.book.name,
-            f"{sum(scores[b.book.name].values()) / len(used) * 100:.0f}",
+            f"{overall_score(scores[b.book.name], s) * 100:.0f}",
             *(str(positions[c][b.book.name]) for c in used),
             str(sum(positions[c][b.book.name] for c in used)),
         ]
@@ -542,6 +595,7 @@ def reading_order_text(
             + ", ".join(used)
             + " lists (see difficulty_lists.txt). 0 = easiest in every list, 100 = hardest in every list. "
             + ("The vocab and opening percentiles are each averaged across the HSK lists first. " if len(s.hsk_lists) > 1 else "")
+            + (f"Repetition counts {s.repetition_weight:g}x as much as each other list (repetition_weight). " if s.repetition_weight != 1 else "")
             + "Length and breadth are left out because a longer book isn't harder per page. The columns on "
             "the right are the book's position in each list, and 'total' is those positions added up. ",
             table(["#", "book", "score", *used, "total"], overall_rows),
@@ -562,7 +616,6 @@ def write_csv(
     path: Path, stats: list[BookStats], lists: list[Ranking], paths: dict[str, list[PathStep]], s: Settings
 ) -> None:
     scores = composite_scores(stats, lists)
-    used = len(composites(lists))
     positions = {kind: {st.stats.book.name: i for i, st in enumerate(paths[kind], 1)} for kind in PATHS}
     targets = [f"{t * 100:g}" for t in s.targets]
 
@@ -590,6 +643,7 @@ def write_csv(
         + [c for h in s.hsk_lists for c in hsk_headers(h)]
         + ["opening_unique_words", "opening_unique_hanzi", "sentence_hanzi", "paragraph_hanzi", "chengyu_per_10k"]
         + ["your_coverage", "your_opening_coverage"]
+        + ["repetition_share", "repeated_words", "opening_repetition_share", "opening_repeated_words"]
     )
     with path.open("w", encoding="utf-8-sig", newline="") as f:
         writer = csv.writer(f)
@@ -597,13 +651,15 @@ def write_csv(
         for b in sorted(stats, key=lambda b: positions["optimised"][b.book.name]):
             writer.writerow(
                 [b.book.name, b.book.source, *(positions[kind][b.book.name] for kind in PATHS)]
-                + [round(sum(scores[b.book.name].values()) / used * 100, 1)]
+                + [round(overall_score(scores[b.book.name], s) * 100, 1)]
                 + [b.book.total, b.hanzi, b.book.chapters, len(b.book.counts), b.unique_hanzi]
                 + [c for h in s.hsk_lists for c in hsk_cells(b, h)]
                 + [b.opening_new, b.opening_new_hanzi]
                 + [round(b.book.sentence_hanzi, 2), round(b.book.paragraph_hanzi, 2), round(b.chengyu_per_10k, 2)]
                 + ["" if b.yours is None else round(b.yours, 4)]
                 + ["" if b.yours_opening is None else round(b.yours_opening, 4)]
+                + [round(b.repetition.share, 4), b.repetition.words]
+                + [round(b.opening_repetition.share, 4), b.opening_repetition.words]
             )
 
 
@@ -641,6 +697,11 @@ def run_meta_analysis(
     warn_unsummarised({b.name for b in books})
     if len({b.exclude_names for b in books}) > 1:
         warn("Meta-analysis: some books were run with exclude_names on and some off, so their numbers aren't comparable")
+    stale = sorted(b.name for b in books if b.opening_words != cfg.opening_words)
+    if stale:
+        warn(f"Meta-analysis: {len(stale)} book(s) were analysed with a different opening_words, run main.py on them again so their opening sample is {cfg.opening_words:,} words:")
+        for name in stale:
+            warn(f"  - {name}")
 
     anki_known = knowledge.known_words() if knowledge else set()
     read = read if read is not None else read_books_knowledge(cfg)
@@ -666,6 +727,8 @@ def run_meta_analysis(
         lines,
         cfg.reading_path_tolerance / 100,
         cfg.reading_path_length_weight,
+        max(cfg.repetition_times, 1),
+        cfg.repetition_weight,
     )
     print(f"\nRanking {len(books)} books...")
     for path in write_meta_analysis(books, settings, OUT_DIR):

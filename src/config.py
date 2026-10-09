@@ -22,9 +22,11 @@ class Config:
     hsk_version: str = "all"
     reading_path_tolerance: float = 2.0
     reading_path_length_weight: float = 0.1
+    repetition_times: int = 10
+    repetition_weight: float = 1.0
 
     # Already known
-    seen_times_to_count_as_learned: int = 10
+    seen_times_to_count_as_learned: int = 25
     use_read_books: bool = False
     read_books_knowledge: str = "seen_times"
     read_books_percentage_understood: float | list = 95.0
@@ -44,7 +46,7 @@ class Config:
     # Plot properties
     use_chapters: bool = True
     chart_bucket_words: int = 5000
-    occurrence_bands: list[int] = field(default_factory=lambda: [1, 5, 10, 15, 20])
+    occurrence_bands: list[int] = field(default_factory=lambda: [1, 5, 10, 15, 20, 25])
     occurrence_overflow_band: bool = True
     coverage_targets: list = field(default_factory=lambda: [95, 98])
     chengyu_analysis: bool = False
@@ -59,11 +61,11 @@ class Config:
 
     # Debug
     segment_batch_size: int = 32
-    parallel_segmenting: bool = False
+    parallel_segmenting: bool = True
     background_charts: bool = True
     clean_text: bool = True
     clear_author_notes: bool = True
-    exclude_names: bool = False
+    exclude_names: bool = True
     ankiconnect_url: str = "http://127.0.0.1:8765"
     ankiconnect_timeout: int = 30
 
