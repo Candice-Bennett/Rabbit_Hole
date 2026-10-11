@@ -12,7 +12,10 @@
   "read_books_percentage_understood": 95,
   "anki_analysis": false,
   "mature_interval_days": 21,
-  "anki_fields": [],
+  "anki_fields": [
+    { "note_type": "Chinese Vocab", "field_name": "Hanzi" },
+    { "note_type": "Basic", "field_name": "Front" }
+  ],
 
   "input_path": "",
   "hsk_data_dir": "hsk_data",

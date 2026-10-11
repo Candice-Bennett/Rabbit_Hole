@@ -223,7 +223,7 @@ itself is read (`opening_words`, `exclude_names`, `clean_text`, `clear_author_no
 | `read_books_percentage_understood` | with `"percentage_understood"`, how much of each book you understood, in percent. One number for every book, or a list with one value per book in alphabetical order |
 | `anki_analysis` | run the Anki knowledge check, its charts and the missing-words export. |
 | `mature_interval_days` | interval (in days) a card needs to count as "know well"  |
-| `anki_fields` | `{note_type, field_name}` pairs telling it which Anki fields hold the Hanzi word, checked via AnkiConnect. Leave empty (`[]`) to skip the Anki check entirely. |
+| `anki_fields` | which Anki note types and fields hold the Hanzi word, as a list of `{"note_type": ..., "field_name": ...}` entries, e.g. `[{"note_type": "Chinese Vocab", "field_name": "Hanzi"}]`. `note_type` is the name under Tools > Manage Note Types in Anki and `field_name` is the field holding just the word. |
 | `input_path` | `.txt` or `.epub` to read - `""` uses the command-line filename from [data](data) instead |
 | `hsk_data_dir` | folder holding the HSK word lists |
 | `missing_words_output` | where the missing-words export goes - `""` uses `output/<book name>/missing_words.txt`. Multi-book runs always use the book's own folder |
