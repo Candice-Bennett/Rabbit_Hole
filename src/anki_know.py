@@ -12,6 +12,7 @@ from hanzi import HAS_HANZI
 from models import WordCandidate
 
 STRIP_HTML = re.compile(r"<[^>]+>")
+BATCH_SIZE = 1000
 
 BUCKETS = ("know_well", "read", "learning", "present", "missing")
 LABELS = {
@@ -28,11 +29,11 @@ def strip_html(text: str) -> str:
 
 
 class AnkiKnowledge:
-    def __init__(self, client: AnkiConnectClient, fields: list[AnkiField], mature_days: int = 21, connect_timeout: int = 30):
+    def __init__(self, client: AnkiConnectClient, fields: list[AnkiField], mature_days: int = 21, timeout: int = 30):
         self.client = client
         self.fields = fields
         self.mature_days = mature_days
-        self.connect_timeout = connect_timeout
+        self.timeout = timeout
         self.word_cards: dict[str, list[int]] = {}
         self.card_info: dict[int, dict] = {}
         self.available = self._connect()
@@ -45,7 +46,7 @@ class AnkiKnowledge:
             "increase ankiconnect_timeout in the config if needed"
         )
         try:
-            self.client.invoke("version", timeout=self.connect_timeout)
+            self.client.invoke("version", timeout=self.timeout)
             return True
         except requests.exceptions.ConnectionError:
             warn(
@@ -59,15 +60,21 @@ class AnkiKnowledge:
             warn("Anki: AnkiConnect took too long to respond, skipping the Anki knowledge check.")
             return False
 
+    def _batched(self, action: str, key: str, ids: list[int]) -> list[dict]:
+        results = []
+        for start in range(0, len(ids), BATCH_SIZE):
+            results += self.client.invoke(action, {key: ids[start : start + BATCH_SIZE]}, timeout=self.timeout)
+        return results
+
     def _load(self) -> bool:
         try:
             for f in self.fields:
-                note_ids = self.client.invoke("findNotes", {"query": f'note:"{f.note_type}"'})
+                note_ids = self.client.invoke("findNotes", {"query": f'note:"{f.note_type}"'}, timeout=self.timeout)
                 if not note_ids:
                     warn(f"Anki: no notes found for note type {f.note_type!r}, check the spelling in Anki")
                     continue
 
-                actual_fields = self.client.invoke("modelFieldNames", {"modelName": f.note_type})
+                actual_fields = self.client.invoke("modelFieldNames", {"modelName": f.note_type}, timeout=self.timeout)
                 resolved = f.field_name
                 if f.field_name not in actual_fields:
                     match = next((a for a in actual_fields if a.lower() == f.field_name.lower()), None)
@@ -77,7 +84,7 @@ class AnkiKnowledge:
                     warn(f"Anki: field {f.field_name!r} not found on {f.note_type!r}, using {match!r} instead")
                     resolved = match
 
-                for info in self.client.invoke("notesInfo", {"notes": note_ids}, timeout=60):
+                for info in self._batched("notesInfo", "notes", note_ids):
                     field_data = info.get("fields", {}).get(resolved)
                     if not field_data or not field_data.get("value"):
                         continue
@@ -86,7 +93,7 @@ class AnkiKnowledge:
 
             all_cards = sorted({cid for cards in self.word_cards.values() for cid in cards})
             if all_cards:
-                for info in self.client.invoke("cardsInfo", {"cards": all_cards}, timeout=60):
+                for info in self._batched("cardsInfo", "cards", all_cards):
                     self.card_info[info["cardId"]] = info
             return True
         except requests.exceptions.RequestException:

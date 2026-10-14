@@ -14,7 +14,7 @@ from typing import Any
 import numpy as np
 
 from anki_know import AnkiKnowledge, export_missing
-from config import Config
+from config import Config, DifficultyLevel
 from console import warn
 from hanzi import HAS_HANZI, hanzi_count
 from hsk import HskList
@@ -43,6 +43,7 @@ class Settings:
     length_weight: float
     repetition_times: int
     words_to_learn: int
+    levels: list[DifficultyLevel]
 
     @property
     def has_known(self) -> bool:
@@ -324,6 +325,66 @@ def short_mark(b: BookStats) -> str:
     return "*" if b.short else ""
 
 
+def level_fits(b: BookStats, lv: DifficultyLevel, s: Settings) -> bool:
+    if not s.has_known:
+        return lv.max_unique_words is None or b.opening_new <= lv.max_unique_words
+    known_ok = lv.min_known is None or b.yours_opening >= lv.min_known / 100
+    unknown_ok = lv.max_unknown_words is None or b.opening_repetition.unknown <= lv.max_unknown_words
+    return known_ok and unknown_ok
+
+
+def level_index(b: BookStats, s: Settings) -> int:
+    # The first level whose limits the book fits, the last level takes every book left over
+    return next((i for i, lv in enumerate(s.levels[:-1]) if level_fits(b, lv, s)), len(s.levels) - 1)
+
+
+def level_rule(lv: DifficultyLevel, s: Settings) -> str:
+    if s.has_known:
+        limits = ([f"at least {lv.min_known:g}% known"] if lv.min_known is not None else []) + (
+            [f"at most {lv.max_unknown_words:,} unknown words"] if lv.max_unknown_words is not None else []
+        )
+    else:
+        limits = [f"at most {lv.max_unique_words:,} unique words"] if lv.max_unique_words is not None else []
+    return f"- {lv.name}: {' and '.join(limits) or 'any book'}"
+
+
+def level_ranking(s: Settings, opening: str) -> Ranking:
+    if s.has_known:
+        how = (
+            f"how much of the first {opening} words you already know (as in For you) and how many "
+            "different words in them you don't know yet"
+        )
+        headers = [f"known, first {opening}", f"unknown words, first {opening}"]
+        key = lambda b: (level_index(b, s), -b.yours_opening)
+        cells = lambda b: [pct(b.yours_opening) + short_mark(b), f"{b.opening_repetition.unknown:,}"]
+        order = "how much you know"
+    else:
+        how = (
+            f"how many different words are in the first {opening} words. Turn on Anki or books you've "
+            "read to group them by the words you know instead, which is a much better guide"
+        )
+        headers = [f"unique words, first {opening}"]
+        key = lambda b: (level_index(b, s), b.opening_new)
+        cells = lambda b: [f"{b.opening_new:,}{short_mark(b)}"]
+        order = "unique words"
+    return Ranking(
+        "Level",
+        f"Groups books into levels by {how}. A book goes in the first level whose limits it fits:\n"
+        + "\n".join(level_rule(lv, s) for lv in s.levels[:-1])
+        + f"\n- {s.levels[-1].name}: every other book\n"
+        f"Set the levels with difficulty_levels in config.json. Within a level, books are ordered by "
+        f"{order}. Levels don't count towards the overall score.\n"
+        + (
+            "* = book is shorter than the sample."
+            if s.has_known
+            else "* = book is shorter than the sample, so it has fewer unique words and looks easier than it is."
+        ),
+        key,
+        ["level", *headers],
+        lambda b: [s.levels[level_index(b, s)].name, *cells(b)],
+    )
+
+
 def vocab_ranking(s: Settings, hsk_list: HskList, targets: list[str]) -> Ranking:
     name = hsk_list.name
     return Ranking(
@@ -453,6 +514,8 @@ def rankings(s: Settings) -> list[Ranking]:
         *(opening_ranking(s, h, targets) for h in s.hsk_lists),
         *(vocab_ranking(s, h, targets) for h in s.hsk_lists),
     ]
+    if s.levels:
+        lists.insert(0, level_ranking(s, opening))
     if s.has_known:
         lists.insert(
             0,
@@ -649,7 +712,7 @@ def write_csv(
 
     headers = (
         ["book", "source", "path_position_optimised", "path_position_word_count_adjusted"]
-        + ["path_position_whole_book", "overall_score"]
+        + ["path_position_whole_book", "overall_score", "level"]
         + ["words", "hanzi", "chapters", "avg_words_per_chapter", "avg_hanzi_per_chapter"]
         + ["unique_words", "unique_hanzi", "unique_words_per_1k"]
         + [c for h in s.hsk_lists for c in hsk_headers(h)]
@@ -666,6 +729,7 @@ def write_csv(
             writer.writerow(
                 [b.book.name, b.book.source, *(positions[kind][b.book.name] for kind in PATHS)]
                 + [round(overall_score(scores[b.book.name]) * 100, 1)]
+                + [s.levels[level_index(b, s)].name if s.levels else ""]
                 + [b.book.total, b.hanzi, b.book.chapters]
                 + [round(b.book.total / max(b.book.chapters, 1), 1), round(b.hanzi / max(b.book.chapters, 1), 1)]
                 + [len(b.book.counts), b.unique_hanzi, round(len(b.book.counts) / max(b.book.total, 1) * 1000, 2)]
@@ -799,6 +863,7 @@ def run_meta_analysis(
         cfg.reading_path_length_weight,
         max(cfg.repetition_times, 1),
         cfg.words_to_learn,
+        cfg.difficulty_levels,
     )
     print(f"\nRanking {len(books)} books...")
     for path in write_meta_analysis(books, settings, OUT_DIR):

@@ -14,6 +14,23 @@ class AnkiField:
 
 
 @dataclass
+class DifficultyLevel:
+    name: str
+    min_known: float | None = None
+    max_unknown_words: int | None = None
+    max_unique_words: int | None = None
+
+
+def default_levels() -> list[DifficultyLevel]:
+    return [
+        DifficultyLevel("Intermediate 中级", 80, 1900, 3400),
+        DifficultyLevel("Upper intermediate 中高级", 80, 2800, 4550),
+        DifficultyLevel("Advanced 高级", 78, 3300, 5000),
+        DifficultyLevel("Master 精通"),
+    ]
+
+
+@dataclass
 class Config:
 
     # Meta-analysis
@@ -24,6 +41,7 @@ class Config:
     reading_path_length_weight: float = 0.1
     repetition_times: int = 10
     words_to_learn: int = 500
+    difficulty_levels: list[DifficultyLevel] = field(default_factory=default_levels)
 
     # Already known
     seen_times_to_count_as_learned: int = 25
@@ -76,6 +94,8 @@ class Config:
             raw = {k: v for k, v in raw.items() if v != ""}
             raw_fields = raw.pop("anki_fields", [])
             anki_fields = [AnkiField(**d) for d in raw_fields]
+            if "difficulty_levels" in raw:
+                raw["difficulty_levels"] = [DifficultyLevel(**d) for d in raw["difficulty_levels"]]
             return cls(anki_fields=anki_fields, **raw)
         except FileNotFoundError:
             warn(f"Config: couldn't find {str(path)!r}, using default settings")

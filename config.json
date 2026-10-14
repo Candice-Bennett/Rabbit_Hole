@@ -1,32 +1,39 @@
 {
-  "meta_analysis": false,
-  "opening_words": 20000,
+  "meta_analysis": true,
+  "opening_words": 50000,
   "hsk_version": "all",
   "reading_path_tolerance": 2.0,
-  "reading_path_length_weight": 0.1,
+  "reading_path_length_weight": 0.4,
   "repetition_times": 10,
   "words_to_learn": 500,
+  "difficulty_levels": [
+    { "name": "Intermediate 中级", "min_known": 80, "max_unknown_words": 1900, "max_unique_words": 3400 },
+    { "name": "Upper intermediate 中高级", "min_known": 80, "max_unknown_words": 2800, "max_unique_words": 4550 },
+    { "name": "Advanced 高级", "min_known": 78, "max_unknown_words": 3300, "max_unique_words": 5000 },
+    { "name": "Master 精通" }
+  ],
   "seen_times_to_count_as_learned": 25,
   "use_read_books": false,
   "read_books_knowledge": "seen_times",
   "read_books_percentage_understood": 95,
-  "anki_analysis": false,
+  "anki_analysis": true,
   "mature_interval_days": 21,
   "anki_fields": [
-    { "note_type": "Chinese Vocab", "field_name": "Hanzi" },
-    { "note_type": "Basic", "field_name": "Front" }
+    { "note_type": "Basic - New HSK (2025) - meaning", "field_name": "Simplified" },
+    { "note_type": "Tuzi", "field_name": "Hanzi" },
+    { "note_type": "Refold Mandarin 1k", "field_name": "Simplified"}
   ],
-
+  
   "input_path": "",
   "hsk_data_dir": "hsk_data",
   "missing_words_output": "",
-  "run_for_data_files": false,
-  "only_run_for_missing_files": false,
-  "only_run_epub": false,
+  "run_for_data_files": true,
+  "only_run_for_missing_files": true,
+  "only_run_epub": true,
   "only_run_txt": false,
 
   "use_chapters": true,
-  "chart_bucket_words": 5000,
+  "chart_bucket_words": 1000,
   "occurrence_bands": [1, 5, 10, 15, 20, 25],
   "occurrence_overflow_band": true,
   "coverage_targets": [95, 98],
@@ -58,7 +65,7 @@
   "example_sentence_min_hanzi": 6,
   "example_sentence_max_hanzi": 20,
 
-  "segment_batch_size": 32,
+  "segment_batch_size": 64,
   "parallel_segmenting": true,
   "background_charts": true,
   "clean_text": true,

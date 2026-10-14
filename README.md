@@ -128,11 +128,15 @@ on Rabbit-Hole ranks every book that has a summary, and writes the results to
     repeat their words more.
   - The whole book path always picks the book you'd know the most of overall.
 - `difficulty_lists.txt`: separate easiest-first lists for each measure: how much
-  you'd know (first `opening_words` words and whole book), repetition, new-word density,
+  you'd know (first `opening_words` words and whole book), level, repetition, new-word density,
   sentence length, chengyu density, length and vocabulary breadth, then the HSK lists:
   opening difficulty and the HSK level needed for each of the `coverage_targets`.
-  Repetition is how much of the words you don't know yet come back `repetition_times`
-  or more times, since words that keep coming back are easier to pick up while reading.
+  Level groups the books into `difficulty_levels` (Intermediate, Upper intermediate, Advanced
+  and Master by default) by how much of the opening you know and how many different words
+  in it you don't. Without Anki or read books it goes by how many unique words are in the
+  opening instead. Repetition is how
+  much of the words you don't know yet come back `repetition_times` or more times, since
+  words that keep coming back are easier to pick up while reading.
 - `books.csv`: every number for every book, for a spreadsheet.
 - `words_to_learn.csv`: the `words_to_learn` words you don't know yet that come up most
   across all your books, so learning them helps with every book at once. Words are ranked
@@ -201,7 +205,7 @@ python rank.py
 ```
 
 This picks up any change to your Anki reviews, `hsk_version`,
-`reading_path_tolerance`, `reading_path_length_weight`, `repetition_times`, `words_to_learn`, `coverage_targets`,
+`reading_path_tolerance`, `reading_path_length_weight`, `repetition_times`, `words_to_learn`, `difficulty_levels`, `coverage_targets`,
 `seen_times_to_count_as_learned` or the `read_books_` options. Changes to how the text
 itself is read (`opening_words`, `exclude_names`, `clean_text`, `clear_author_notes`) and new books in
 [data/books_read](data/books_read) do need `main.py` to be run again.
@@ -217,6 +221,7 @@ itself is read (`opening_words`, `exclude_names`, `clean_text`, `clear_author_no
 | `reading_path_length_weight` | how much harder the reading paths treat longer books: a book's difficulty is multiplied by its length divided by the median book length, to this power. e.g. `0.1` treats a book 4x the median length as about 15% harder and one a quarter of the median as about 13% easier, while `0.3` makes those about 52% harder and 34% easier. `0` ignores length |
 | `repetition_times` | for the repetition list, how many times a word you don't know yet has to appear to count as repeated, e.g. `10` |
 | `words_to_learn` | how many words go in `words_to_learn.csv` and `words_to_learn.txt`, the words you don't know yet that come up most across all your books. `-1` lists every word. |
+| `difficulty_levels` | the levels in the Level list, easiest first, as `{"name": ..., "min_known": ..., "max_unknown_words": ..., "max_unique_words": ...}` entries. A book goes in the first level where at least `min_known` percent of its first `opening_words` words are known and it has at most `max_unknown_words`. |
 | `seen_times_to_count_as_learned` | for the known coverage charts, once a word or hanzi has been seen this many times in the text, later appearances count as known `0` turns this off |
 | `use_read_books` | count the vocabulary of the books in [data/books_read](data/books_read) as known (see [Books you've read](#books-youve-read)) |
 | `read_books_knowledge` | how a book you've read adds known words: `"seen_times"` or `"percentage_understood"` |
@@ -249,7 +254,7 @@ itself is read (`opening_words`, `exclude_names`, `clean_text`, `clear_author_no
 | `clear_author_notes` | when `clean_text` is on, also strip the author's notes |
 | `exclude_names` | leave people's names and place names out of every count, chart and export, using HanLP's name tagger (downloads a second model on first run). |
 | `ankiconnect_url` | the address AnkiConnect listens on |
-| `ankiconnect_timeout` | seconds to wait for AnkiConnect to respond before giving up |
+| `ankiconnect_timeout` | seconds to wait for each AnkiConnect request before giving up. |
 
 ## Troubleshooting
 
