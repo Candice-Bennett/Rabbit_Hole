@@ -270,6 +270,10 @@ itself is read (`opening_words`, `exclude_names`, `clean_text`, `clear_author_no
     4. Re-run it - it'll see the model's already in place and skip
        downloading it.
 
+- **HanLP finds 0 words**
+  HanLP as of 15-Oct-2026 only supports Python version 3.10-3.14 so make sure that you are using a compatible python version.
+  Thank you to 衣扣 for identifying this!
+
 ## Acknowledgements
 
 The HSK word lists under [hsk_data](hsk_data) are sourced from
