@@ -345,6 +345,9 @@ def find_inputs(cfg: Config, input_name: str | None) -> list[Path]:
 
 
 def main(input_name: str | None = None) -> None:
+    if not (3, 10) <= sys.version_info[:2] <= (3, 14):
+        warn(f"You're on Python {sys.version_info.major}.{sys.version_info.minor}, but HanLP only supports "
+             "3.10-3.14 - if it finds 0 words, switch to a supported version.")
     cfg = Config.load("config.json")
     inputs = find_inputs(cfg, input_name)
     batch = len(inputs) > 1

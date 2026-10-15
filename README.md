@@ -73,7 +73,8 @@ unique words seen.
 
 ## Prerequisites
 
-- **Python** - get it from [python.org/downloads](https://www.python.org/downloads/). On Windows,
+- **Python 3.14** (HanLP doesn't support newer versions yet, so don't just grab the latest) -
+  get it from [python.org/downloads](https://www.python.org/downloads/). On Windows,
   tick "Add python.exe to PATH" during install, then confirm it worked with `python --version`
   in a new terminal.
 - **AnkiConnect** (only needed for the Anki knowledge check) - in Anki go to Tools > Add-ons > Get Add-ons,
